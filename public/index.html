@@ -1,0 +1,763 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Voice Thief 기믹 시연</title>
+<style>
+:root{
+  /* 3D 시험장 위에 얇은 HUD. 목표는 왼쪽 위 글자만, 안내는 아래 가운데 */
+  --ink:#eef1f3; --muted:#a3acb3; --panel:rgba(14,16,19,.82); --line:#2b3238; --accent:#f2b134; --ok:#3ddc97; --bad:#ff8a80;
+  --font:"Noto Sans KR","Apple SD Gothic Neo","Malgun Gothic",system-ui,sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#000;color:var(--ink);font-family:var(--font);overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block}
+#goal{position:fixed;left:18px;top:14px;font-size:16px;font-weight:600;text-shadow:0 1px 3px #000;pointer-events:none}
+#hint{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);max-width:min(720px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:15px;line-height:1.7;pointer-events:none;text-align:center}
+#hint b{color:var(--accent);font-weight:600}
+#prompt{position:fixed;left:50%;top:58%;transform:translateX(-50%);font-size:15px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;pointer-events:none;display:none;white-space:nowrap}
+#gauge{position:fixed;left:50%;top:64%;transform:translateX(-50%);width:240px;display:none;pointer-events:none}
+#gauge .bar{height:10px;border-radius:5px;background:#222;border:1px solid var(--line);overflow:hidden}
+#gauge .fill{height:100%;width:0;background:var(--accent)}
+#gauge .lab{font-size:13px;text-align:center;margin-bottom:4px;text-shadow:0 1px 2px #000}
+#cross{position:fixed;left:50%;top:50%;width:6px;height:6px;margin:-3px 0 0 -3px;border-radius:50%;background:rgba(255,255,255,.7);pointer-events:none}
+#mic{position:fixed;right:16px;bottom:18px;width:150px;pointer-events:none;font-size:11px;color:var(--muted)}
+#mic .bar{position:relative;height:8px;border-radius:4px;background:#1a1d20;border:1px solid var(--line);overflow:hidden;margin-top:4px}
+#mic .fill{height:100%;width:0;background:var(--ok)}
+#mic .tick{position:absolute;top:-1px;bottom:-1px;width:2px;background:#fff8}
+#batt{position:fixed;left:18px;top:42px;font-size:12px;color:var(--muted);pointer-events:none}
+#toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:7px 14px;font-size:14px;opacity:0;transition:opacity .25s;pointer-events:none}
+#toast.show{opacity:1}
+.overlay{position:fixed;inset:0;background:rgba(5,6,8,.9);display:flex;align-items:center;justify-content:center;padding:16px;z-index:20}
+.card{width:min(560px,100%);background:#111417;border:1px solid var(--line);border-radius:14px;padding:22px;display:flex;flex-direction:column;gap:12px;max-height:100%;overflow:auto}
+.card h1{margin:0;font-size:22px;font-weight:700}
+.card h1 span{color:var(--accent)}
+.card p{margin:0;color:var(--muted);font-size:14px;line-height:1.7}
+.card ol{margin:0;padding-left:20px;color:var(--ink);font-size:14px;line-height:1.8}
+.card .row{display:flex;gap:8px;flex-wrap:wrap}
+button{font:inherit;color:var(--ink);background:#1d2329;border:1px solid var(--line);border-radius:8px;padding:9px 14px;cursor:pointer}
+button.primary{background:var(--accent);border-color:var(--accent);color:#1a1205;font-weight:700}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.badge{display:inline-block;font-size:12px;padding:2px 8px;border-radius:10px;border:1px solid var(--line);color:var(--muted)}
+.badge.ok{color:var(--ok);border-color:#21573f}.badge.bad{color:var(--bad);border-color:#5a2f2f}
+.meterbig{height:14px;border-radius:7px;background:#1a1d20;border:1px solid var(--line);overflow:hidden}
+.meterbig div{height:100%;width:0;background:var(--ok)}
+.err{color:var(--bad);font-size:13px}
+#help{display:none}
+#help table{border-collapse:collapse;font-size:14px}
+#help td{padding:5px 10px;border-bottom:1px solid var(--line)}
+#help td:first-child{color:var(--accent);white-space:nowrap}
+#results{display:none}
+.clip{display:flex;align-items:center;gap:10px;font-size:14px;padding:6px 0;border-bottom:1px solid var(--line)}
+.clip span{color:var(--muted);font-variant-numeric:tabular-nums}
+#touch{display:none}
+.tbtn{position:fixed;width:64px;height:64px;border-radius:50%;background:rgba(40,44,50,.35);border:1px solid rgba(255,255,255,.18);color:#fff;font-size:13px;display:flex;align-items:center;justify-content:center;z-index:5}
+#joy{position:fixed;width:110px;height:110px;margin:-55px 0 0 -55px;border-radius:50%;border:1px solid rgba(255,255,255,.25);display:none;pointer-events:none;z-index:5}
+#joy i{position:absolute;left:50%;top:50%;width:44px;height:44px;margin:-22px 0 0 -22px;border-radius:50%;background:rgba(255,255,255,.25)}
+#rot{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center;z-index:30;font-size:16px}
+@media (orientation:portrait) and (pointer:coarse){#rot.live{display:flex}}
+@media (prefers-reduced-motion:reduce){#toast{transition:none}}
+</style>
+</head>
+<body>
+<div id="goal">목표 : </div>
+<div id="batt"></div>
+<div id="cross"></div>
+<div id="prompt"></div>
+<div id="gauge"><div class="lab" id="gaugeLab"></div><div class="bar"><div class="fill" id="gaugeFill"></div></div></div>
+<div id="hint"></div>
+<div id="mic">마이크<div class="bar"><div class="fill" id="micFill"></div><div class="tick" id="tickSpeech"></div><div class="tick" id="tickShout"></div></div></div>
+<div id="toast" role="status"></div>
+<div id="rot">화면을 가로로 돌려주세요</div>
+
+<div class="overlay" id="start">
+  <div class="card" id="startCard">
+    <h1>Voice Thief <span>기믹 시연</span></h1>
+    <p>토토 없이 게임 기믹만 차례로 체험하는 시험장이에요. 방을 하나씩 지나가면서 해 보세요.</p>
+    <ol>
+      <li>손전등과 배터리</li>
+      <li>엿듣는 인형: 내 목소리를 기억했다가 그 자리에서 따라 해요</li>
+      <li>음성 출입문: 화면의 문구를 말하면 열려요</li>
+      <li>열려라 참깨 문</li>
+      <li>레버 협동: 잡은 채로 외치면 반대편 동료가 같이 당겨요</li>
+      <li>소리 지르기 셔터: 계속 질러야 올라가요</li>
+      <li>상자에 갇힌 동료 꺼내기: 목소리가 먹먹하게 들려요</li>
+      <li>오늘의 명대사 듣기</li>
+    </ol>
+    <p>마이크를 써요. 녹음은 이 탭 안에서만 쓰이고 어디에도 저장되지 않아요. 이어폰을 끼면 소리 방향이 잘 들려요.</p>
+    <div class="row"><span class="badge" id="srBadge">음성 인식 확인 중</span></div>
+    <div class="err" id="startErr" role="alert"></div>
+    <div class="row"><button class="primary" id="btnMic">마이크 켜고 시작</button><button id="btnNoMic">마이크 없이 둘러보기</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="calib" style="display:none">
+  <div class="card">
+    <h1>목소리 크기 맞추기</h1>
+    <p id="calibText">잠깐 조용히 해 주세요.</p>
+    <div class="meterbig"><div id="calibFill"></div></div>
+    <p id="calibResult"></p>
+    <div class="row"><button class="primary" id="btnGo" disabled>시작하기</button><button id="btnRecal">다시 재기</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="help">
+  <div class="card">
+    <h1>조작법</h1>
+    <table>
+      <tr><td>W A S D</td><td>이동</td></tr>
+      <tr><td>마우스</td><td>둘러보기 (화면을 한 번 누르면 마우스가 잠겨요)</td></tr>
+      <tr><td>Shift</td><td>달리기</td></tr>
+      <tr><td>F</td><td>손전등 켜기·끄기</td></tr>
+      <tr><td>E</td><td>상호작용 (레버, 상자는 꾹 누르기)</td></tr>
+      <tr><td>T</td><td>음성 인식이 안 될 때 테스트용으로 음성 문 통과</td></tr>
+      <tr><td>Tab</td><td>이 창 열기·닫기</td></tr>
+    </table>
+    <div class="row"><button id="helpClose">닫기</button></div>
+  </div>
+</div>
+
+<div class="overlay" id="results">
+  <div class="card">
+    <h1>오늘의 명대사</h1>
+    <p>이번 판에 녹음된 목소리 중 가장 컸던 것들이에요. 이 탭을 닫으면 사라져요.</p>
+    <div id="clipList"></div>
+    <div class="row"><button id="resClose">닫기</button></div>
+  </div>
+</div>
+
+<div id="touch">
+  <div id="joy"><i></i></div>
+  <div class="tbtn" id="tFlash" style="right:24px;bottom:110px">손전등</div>
+  <div class="tbtn" id="tUse" style="right:100px;bottom:40px">상호작용</div>
+  <div class="tbtn" id="tHelp" style="right:24px;top:20px;width:44px;height:44px">?</div>
+</div>
+
+<script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.169.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+
+/* ================= 시험장 배치 (배치 도구와 같은 형식: x, y 평면 좌표, 미터) ================= */
+const ROOMS = [
+  { id:'A', x:0,  y:0,  w:10, h:10, tint:'#5d7ea6', dark:true,
+    goal:'손전등을 켜고 출구 찾기',
+    hint:'<b>F</b>를 누르면 → 손전등이 켜집니다<br>떨어진 <b>배터리</b>를 주우면 → 손전등이 충전됩니다' },
+  { id:'B', x:-1, y:10, w:12, h:12, tint:'#6f9e74',
+    goal:'음성 출입문 열기',
+    hint:'인형 근처에서 <b>말하면</b> → 인형이 목소리를 기억했다가 따라 합니다<br>문 위 화면의 <b>인증 문구</b>를 소리 내어 말하면 → 문이 열립니다' },
+  { id:'C', x:-1, y:22, w:12, h:9, tint:'#b07aa8',
+    goal:'참깨 문 열기',
+    hint:'<b>"열려라 참깨!"</b>라고 말하면 → 문이 열립니다' },
+  { id:'D', x:-3, y:31, w:16, h:11, tint:'#7d93b8',
+    goal:'레버로 셔터 열기',
+    hint:'레버 앞에서 <b>E를 꾹</b> 누른 채 크게 <b>"하나 둘 셋!"</b> 외치면 → 반대편 동료가 같이 당깁니다<br>혼자 당기기만 하면 → 아무 일도 일어나지 않습니다' },
+  { id:'E', x:3,  y:42, w:4,  h:26, tint:'#a88a52',
+    goal:'소리 셔터 열기',
+    hint:'소리를 <b>계속 지르면</b> → 셔터가 올라갑니다<br>소리를 <b>멈추면</b> → 셔터가 다시 내려옵니다' },
+  { id:'F', x:-1, y:68, w:12, h:10, tint:'#a8675d',
+    goal:'갇힌 동료 꺼내기',
+    hint:'상자 옆에서 <b>E를 꾹</b> 누르면 → 동료를 꺼냅니다<br>상자에 갇힌 동료 목소리는 → <b>먹먹하게</b> 들립니다' },
+  { id:'G', x:0,  y:78, w:10, h:8, tint:'#5aa49a',
+    goal:'오늘의 명대사 듣기',
+    hint:'단상 앞에서 <b>E</b>를 누르면 → 이번 판에 녹음된 목소리를 들을 수 있습니다' }
+];
+const DOORS = [
+  { id:'d1', kind:'normal', x:5, y:10, len:2 },
+  { id:'d2', kind:'voice',  x:5, y:22, len:2, phrase:'야 이쪽으로 와봐' },
+  { id:'d3', kind:'sesame', x:5, y:31, len:2, phrase:'열려라 참깨' },
+  { id:'d4', kind:'lever',  x:5, y:42, len:4 },
+  { id:'d5', kind:'shout',  x:5, y:68, len:4 },
+  { id:'d6', kind:'normal', x:5, y:78, len:2, locked:true }
+];
+const DOOR_COLOR = { normal:'#c9d1d9', voice:'#b392f0', sesame:'#ff9ad5', lever:'#7fb3d5', shout:'#f2b134' };
+const DOOR_NAME = { voice:'음성 출입문', sesame:'열려라 참깨 문', lever:'레버 셔터', shout:'소리 지르기 셔터' };
+const WALL_H = 3.4, EYE = 1.65;
+
+/* ================= 렌더러 ================= */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+document.body.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#050506');
+scene.fog = new THREE.Fog('#050506', 7, 30);
+const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
+camera.rotation.order = 'YXZ';
+scene.add(camera);
+scene.add(new THREE.HemisphereLight('#c8d6e0', '#1a1410', 0.06));
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+
+/* ================= 텍스처 ================= */
+function canvasTex(w, h, draw, repeat) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace;
+  if (repeat) { t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(repeat[0], repeat[1]); }
+  t.anisotropy = 4;
+  return t;
+}
+const floorTex = canvasTex(256, 256, (g, w, h) => {
+  g.fillStyle = '#3b3a3e'; g.fillRect(0, 0, w, h);
+  g.fillStyle = '#46454a'; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
+  for (let i = 0; i < 1600; i++) { g.fillStyle = `rgba(${Math.random() < .5 ? 0 : 255},${Math.random() < .5 ? 0 : 255},${Math.random() < .5 ? 0 : 255},0.04)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+  g.strokeStyle = '#2a292d'; g.lineWidth = 3; g.strokeRect(0, 0, 128, 128); g.strokeRect(128, 128, 128, 128); g.strokeRect(128, 0, 128, 128); g.strokeRect(0, 128, 128, 128);
+}, [1, 1]);
+function wallTex(tint) {
+  return canvasTex(256, 256, (g, w, h) => {
+    g.fillStyle = '#d9d2c4'; g.fillRect(0, 0, w, h);
+    g.fillStyle = tint; g.fillRect(0, h * 0.62, w, h * 0.38);
+    g.fillStyle = '#ffffff55'; g.fillRect(0, h * 0.6, w, 6);
+    for (let i = 0; i < 5; i++) { const x = Math.random() * w; const grd = g.createLinearGradient(0, 0, 0, h); grd.addColorStop(0, 'rgba(120,70,30,0.35)'); grd.addColorStop(1, 'rgba(120,70,30,0)'); g.fillStyle = grd; g.fillRect(x, 0, 3 + Math.random() * 6, h * (0.3 + Math.random() * 0.5)); }
+    for (let i = 0; i < 900; i++) { g.fillStyle = 'rgba(0,0,0,0.05)'; g.fillRect(Math.random() * w, Math.random() * h, 3, 3); }
+  }, [1, 1]);
+}
+
+/* ================= 레벨 생성 ================= */
+const colliders = [];      // 고정 벽 {x1,z1,x2,z2}
+const doorObjs = [];
+const T = 0.2;             // 벽 두께
+function addBox(w, h, d, mat, x, y, z) {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+  m.position.set(x, y, z); scene.add(m); return m;
+}
+function subtract(a, b, holes) {
+  let segs = [[a, b]];
+  for (const [c, d] of holes) {
+    const next = [];
+    for (const [s, e] of segs) { if (d <= s || c >= e) { next.push([s, e]); continue; } if (c > s) next.push([s, c]); if (d < e) next.push([d, e]); }
+    segs = next;
+  }
+  return segs.filter(([s, e]) => e - s > 0.05);
+}
+for (const r of ROOMS) {
+  const tint = r.tint;
+  const fm = new THREE.MeshStandardMaterial({ map: floorTex.clone(), roughness: 0.9 });
+  fm.map.repeat.set(r.w / 2, r.h / 2); fm.map.needsUpdate = true;
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h), fm);
+  floor.rotation.x = -Math.PI / 2; floor.position.set(r.x + r.w / 2, 0, r.y + r.h / 2); scene.add(floor);
+  const ceil = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h), new THREE.MeshStandardMaterial({ color: '#1c1c20', roughness: 1 }));
+  ceil.rotation.x = Math.PI / 2; ceil.position.set(r.x + r.w / 2, WALL_H, r.y + r.h / 2); scene.add(ceil);
+  const wm = new THREE.MeshStandardMaterial({ map: wallTex(tint), roughness: 0.95 });
+  // 벽은 방 안쪽으로 반 두께만큼 들여서, 붙어 있는 두 방의 벽이 등을 맞대게 함
+  const edges = [
+    { o: 'h', c: r.y, a: r.x, b: r.x + r.w, in: 1 }, { o: 'h', c: r.y + r.h, a: r.x, b: r.x + r.w, in: -1 },
+    { o: 'v', c: r.x, a: r.y, b: r.y + r.h, in: 1 }, { o: 'v', c: r.x + r.w, a: r.y, b: r.y + r.h, in: -1 }
+  ];
+  for (const e of edges) {
+    const holes = DOORS.filter(d => e.o === 'h' && Math.abs(d.y - e.c) < 0.01 && d.x >= e.a && d.x <= e.b).map(d => [d.x - d.len / 2, d.x + d.len / 2]);
+    for (const [s, t] of subtract(e.a, e.b, holes)) {
+      const len = t - s, mid = (s + t) / 2;
+      const cc = e.c + e.in * T / 2;
+      if (e.o === 'h') { addBox(len, WALL_H, T, wm, mid, WALL_H / 2, cc); colliders.push({ x1: s, x2: t, z1: cc - T / 2, z2: cc + T / 2 }); }
+      else { addBox(T, WALL_H, len, wm, cc, WALL_H / 2, mid); colliders.push({ x1: cc - T / 2, x2: cc + T / 2, z1: s, z2: t }); }
+    }
+  }
+  if (!r.dark) {
+    const n = r.h > 14 ? 3 : 1;
+    r.lights = [];
+    for (let i = 0; i < n; i++) {
+      const L = new THREE.PointLight('#ffe2b8', 22, 16, 1.6);
+      L.position.set(r.x + r.w / 2, WALL_H - 0.3, r.y + r.h * (i + 0.5) / n);
+      scene.add(L); r.lights.push(L);
+      const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.12, 24), new THREE.MeshBasicMaterial({ color: '#ffe9c8' }));
+      lamp.position.copy(L.position).setY(WALL_H - 0.06); scene.add(lamp);
+    }
+  }
+}
+
+/* 문 위 화면(전광판) */
+function makeSign(door) {
+  const c = document.createElement('canvas'); c.width = 512; c.height = 192;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.9), new THREE.MeshBasicMaterial({ map: tex, toneMapped: false }));
+  m.position.set(door.x, WALL_H - 0.75, door.y - T * 0.8 - 0.06); m.rotation.y = Math.PI;
+  scene.add(m);
+  door.sign = { c, tex, draw() {
+    const g = c.getContext('2d');
+    g.fillStyle = '#07090b'; g.fillRect(0, 0, 512, 192);
+    g.strokeStyle = DOOR_COLOR[door.kind]; g.lineWidth = 6; g.strokeRect(3, 3, 506, 186);
+    g.textAlign = 'center'; g.fillStyle = DOOR_COLOR[door.kind]; g.font = '700 30px "Noto Sans KR",sans-serif';
+    g.fillText(DOOR_NAME[door.kind] + (door.open ? ' · 열림' : ''), 256, 46);
+    g.fillStyle = '#eef1f3'; g.font = '700 36px "Noto Sans KR",sans-serif';
+    if (door.kind === 'voice') g.fillText('"' + door.phrase + '"', 256, 104);
+    else if (door.kind === 'sesame') g.fillText('"열려라 참깨!"', 256, 104);
+    else if (door.kind === 'shout') g.fillText('셔터는 소리에 반응합니다', 256, 104);
+    else if (door.kind === 'lever') g.fillText('레버 두 개를 동시에', 256, 104);
+    if (door.kind === 'voice' || door.kind === 'sesame') {
+      g.fillStyle = '#a3acb3'; g.font = '400 24px "Noto Sans KR",sans-serif';
+      g.fillText('인식된 문구: ' + (door.heard ? door.heard.slice(0, 18) : '…'), 256, 158);
+    } else if (door.kind === 'shout') {
+      g.fillStyle = '#1d2329'; g.fillRect(56, 136, 400, 22);
+      g.fillStyle = DOOR_COLOR.shout; g.fillRect(56, 136, 400 * (door.p || 0), 22);
+    }
+    tex.needsUpdate = true;
+  } };
+  door.sign.draw();
+}
+for (const d of DOORS) {
+  const mat = new THREE.MeshStandardMaterial({ color: DOOR_COLOR[d.kind], roughness: 0.6, metalness: d.kind === 'normal' ? 0.1 : 0.4, emissive: DOOR_COLOR[d.kind], emissiveIntensity: 0.06 });
+  const mesh = addBox(d.len, WALL_H, T * 1.6, mat, d.x, WALL_H / 2, d.y);
+  // 셔터 줄무늬
+  if (d.kind !== 'normal') for (let i = 0; i < 9; i++) { const s = new THREE.Mesh(new THREE.BoxGeometry(d.len, 0.04, T * 1.25), new THREE.MeshStandardMaterial({ color: '#00000055', transparent: true, opacity: 0.35 })); s.position.y = -WALL_H / 2 + 0.35 * (i + 1); s.scale.z = 1.3; mesh.add(s); }
+  Object.assign(d, { mesh, open: false, amt: 0, p: 0, heard: '', holdT: 0 });
+  if (d.kind !== 'normal') makeSign(d);
+  doorObjs.push(d);
+}
+
+/* 소품 */
+const solids = [];
+const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
+function solid(x, z, w, d) { solids.push({ x1: x - w / 2, x2: x + w / 2, z1: z - d / 2, z2: z + d / 2 }); }
+const mint = new THREE.MeshStandardMaterial({ color: '#8fd9bd', roughness: 0.95 });
+const black = new THREE.MeshStandardMaterial({ color: '#0d0d10', roughness: 0.3 });
+const gray = new THREE.MeshStandardMaterial({ color: '#8c9196', roughness: 0.8 });
+// 배터리
+const battery = new THREE.Group();
+battery.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.32, 24), new THREE.MeshStandardMaterial({ color: '#9be15d', emissive: '#4f8a1c', emissiveIntensity: 0.8 })));
+battery.position.set(2, 0.5, 7.5); scene.add(battery);
+const battGlow = new THREE.PointLight('#9be15d', 1.2, 3, 2); battGlow.position.copy(battery.position); scene.add(battGlow);
+// 엿듣는 인형 (작은 봉제 인형)
+const doll = new THREE.Group();
+const ped = new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.8, 0.7), gray); ped.position.y = 0.4; doll.add(ped);
+const dBody = new THREE.Mesh(new THREE.SphereGeometry(0.2, 32, 24), mint); dBody.scale.y = 1.2; dBody.position.y = 1.02; doll.add(dBody);
+const dHead = new THREE.Mesh(new THREE.SphereGeometry(0.22, 32, 24), mint); dHead.position.y = 1.42; doll.add(dHead);
+for (const s of [-1, 1]) {
+  const ear = new THREE.Mesh(new THREE.SphereGeometry(0.08, 16, 12), mint); ear.position.set(s * 0.15, 1.6, 0); doll.add(ear);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), black); eye.position.set(s * 0.08, 1.45, -0.19); doll.add(eye);
+}
+const dMouth = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.015, 8, 24, Math.PI), black); dMouth.position.set(0, 1.37, -0.205); dMouth.rotation.z = Math.PI; doll.add(dMouth);
+doll.position.set(8.5, 0, 16); doll.rotation.y = Math.PI * 0.85; scene.add(doll); solid(8.5, 16, 0.8, 0.8);
+// 레버 + 동료 마네킹
+function makeLever(x, z, faceRight) {
+  const g = new THREE.Group();
+  g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.25, 1.1, 0.5), gray), 0, 0.95, 0));
+  const pivot = new THREE.Group(); pivot.position.set(faceRight ? 0.15 : -0.15, 1.2, 0);
+  const handle = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 12), new THREE.MeshStandardMaterial({ color: '#c94b3a', roughness: 0.5 }));
+  handle.position.y = 0.3; pivot.add(handle);
+  const knob = new THREE.Mesh(new THREE.SphereGeometry(0.07, 16, 12), new THREE.MeshStandardMaterial({ color: '#222' })); knob.position.y = 0.62; pivot.add(knob);
+  g.add(pivot); g.position.set(x, 0, z); scene.add(g); solid(x, z, 0.4, 0.6);
+  return { g, pivot, x, z, pulled: 0, side: faceRight ? 1 : -1 };
+}
+const leverA = makeLever(-2.6, 36.5, true);
+const leverB = makeLever(12.6, 36.5, false);
+function mannequin() {
+  const g = new THREE.Group();
+  const m = new THREE.MeshStandardMaterial({ color: '#b9b3a8', roughness: 0.7 });
+  g.add(at(new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.6, 8, 16), m), 0, 1.1, 0));
+  g.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.15, 24, 16), m), 0, 1.72, 0));
+  for (const s of [-1, 1]) g.add(at(new THREE.Mesh(new THREE.CapsuleGeometry(0.08, 0.6, 6, 12), m), s * 0.1, 0.42, 0));
+  scene.add(g); return g;
+}
+const buddy = mannequin(); buddy.position.set(11.7, 0, 36.5); buddy.rotation.y = -Math.PI / 2;
+// 상자 + 갇힌 동료
+const box = new THREE.Group();
+box.add(new THREE.Mesh(new THREE.BoxGeometry(1.1, 1.3, 1.1), new THREE.MeshStandardMaterial({ color: '#b98d58', roughness: 0.95 })));
+box.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.12, 0.3), new THREE.MeshStandardMaterial({ color: '#d7c49a', roughness: 0.6 })), 0, 0.6, 0));
+box.position.set(5, 0.65, 73.5); scene.add(box); solid(5, 73.5, 1.1, 1.1);
+const freed = mannequin(); freed.position.set(5, 0, 73.5); freed.visible = false;
+// 단상
+const podium = addBox(1.2, 1.1, 0.7, new THREE.MeshStandardMaterial({ color: '#4b6b66', roughness: 0.7 }), 5, 0.55, 83); solid(5, 83, 1.2, 0.7);
+
+/* ================= 손전등 ================= */
+const flash = new THREE.SpotLight('#fff3dc', 0, 26, 0.42, 0.45, 1.3);
+flash.position.set(0.15, -0.15, 0);
+const flashTarget = new THREE.Object3D(); flashTarget.position.set(0, -0.05, -1);
+camera.add(flash); camera.add(flashTarget); flash.target = flashTarget;
+let flashOn = false, battery01 = 0.35;
+
+/* ================= 플레이어 / 입력 ================= */
+const player = { x: 5, z: 2, yaw: Math.PI, pitch: 0 };
+const keys = {};
+let running = false, useHeld = false, usePressed = false;
+const touch = { on: 'ontouchstart' in window, mx: 0, mz: 0 };
+addEventListener('keydown', e => {
+  if (e.code === 'Tab') { e.preventDefault(); toggleHelp(); return; }
+  if (!running) return;
+  keys[e.code] = true;
+  if (e.code === 'KeyF' && !e.repeat) toggleFlash();
+  if (e.code === 'KeyE' && !e.repeat) { useHeld = true; usePressed = true; }
+  if (e.code === 'KeyT' && !e.repeat) testPass();
+});
+addEventListener('keyup', e => { keys[e.code] = false; if (e.code === 'KeyE') useHeld = false; });
+renderer.domElement.addEventListener('click', () => { if (running && !touch.on && document.pointerLockElement !== renderer.domElement) renderer.domElement.requestPointerLock?.(); });
+addEventListener('mousemove', e => {
+  if (document.pointerLockElement !== renderer.domElement) return;
+  player.yaw -= e.movementX * 0.0022; player.pitch = Math.max(-1.3, Math.min(1.3, player.pitch - e.movementY * 0.0022));
+});
+function toggleFlash() {
+  if (battery01 <= 0) { toast('배터리가 없어요. 배터리를 주우세요'); return; }
+  flashOn = !flashOn;
+}
+
+/* 모바일 조작 */
+if (touch.on) {
+  document.getElementById('touch').style.display = 'block';
+  document.getElementById('rot').classList.add('live');
+  const joy = document.getElementById('joy'), knob = joy.querySelector('i');
+  let jid = null, jx = 0, jy = 0, lid = null, lx = 0, ly = 0;
+  renderer.domElement.addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) {
+      if (t.clientX < innerWidth / 2 && jid === null) { jid = t.identifier; jx = t.clientX; jy = t.clientY; joy.style.left = jx + 'px'; joy.style.top = jy + 'px'; joy.style.display = 'block'; }
+      else if (lid === null) { lid = t.identifier; lx = t.clientX; ly = t.clientY; }
+    }
+  }, { passive: true });
+  renderer.domElement.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === jid) { let dx = t.clientX - jx, dy = t.clientY - jy; const L = Math.hypot(dx, dy), M = 50; if (L > M) { dx *= M / L; dy *= M / L; } knob.style.transform = `translate(${dx}px,${dy}px)`; touch.mx = dx / M; touch.mz = dy / M; }
+      if (t.identifier === lid) { player.yaw -= (t.clientX - lx) * 0.005; player.pitch = Math.max(-1.3, Math.min(1.3, player.pitch - (t.clientY - ly) * 0.005)); lx = t.clientX; ly = t.clientY; }
+    }
+  }, { passive: true });
+  const end = e => { for (const t of e.changedTouches) { if (t.identifier === jid) { jid = null; touch.mx = touch.mz = 0; joy.style.display = 'none'; knob.style.transform = ''; } if (t.identifier === lid) lid = null; } };
+  renderer.domElement.addEventListener('touchend', end); renderer.domElement.addEventListener('touchcancel', end);
+  const tUse = document.getElementById('tUse');
+  tUse.addEventListener('touchstart', e => { e.preventDefault(); useHeld = true; usePressed = true; });
+  tUse.addEventListener('touchend', e => { e.preventDefault(); useHeld = false; });
+  document.getElementById('tFlash').addEventListener('touchstart', e => { e.preventDefault(); if (running) toggleFlash(); });
+  document.getElementById('tHelp').addEventListener('touchstart', e => { e.preventDefault(); toggleHelp(); });
+}
+
+/* 충돌 */
+function doorBlocks() { return doorObjs.filter(d => d.amt < 0.8).map(d => ({ x1: d.x - d.len / 2, x2: d.x + d.len / 2, z1: d.y - T, z2: d.y + T })); }
+function resolve(px, pz) {
+  const R = 0.32, all = colliders.concat(solids, doorBlocks());
+  for (let it = 0; it < 3; it++) for (const c of all) {
+    const nx = Math.max(c.x1, Math.min(px, c.x2)), nz = Math.max(c.z1, Math.min(pz, c.z2));
+    const dx = px - nx, dz = pz - nz, d2 = dx * dx + dz * dz;
+    if (d2 < R * R) {
+      if (d2 > 1e-9) { const d = Math.sqrt(d2); px = nx + dx / d * R; pz = nz + dz / d * R; }
+      else { const opts = [[c.x1 - R - px, 0], [c.x2 + R - px, 0], [0, c.z1 - R - pz], [0, c.z2 + R - pz]].sort((a, b) => Math.abs(a[0] + a[1]) - Math.abs(b[0] + b[1])); px += opts[0][0]; pz += opts[0][1]; }
+    }
+  }
+  return [px, pz];
+}
+
+/* ================= 오디오: 마이크, 녹음, 거리별 재생 ================= */
+const A = { ctx: null, ok: false, level: 0, floor: 0.004, speech: 0.03, shout: 0.09, clips: [], cur: null, silence: 0 };
+async function initMic() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false } });
+  A.ctx = A.ctx || new (window.AudioContext || window.webkitAudioContext)();
+  await A.ctx.resume();
+  const src = A.ctx.createMediaStreamSource(stream);
+  const proc = A.ctx.createScriptProcessor(2048, 1, 1);
+  const mute = A.ctx.createGain(); mute.gain.value = 0;
+  src.connect(proc); proc.connect(mute); mute.connect(A.ctx.destination);
+  proc.onaudioprocess = e => {
+    const d = e.inputBuffer.getChannelData(0);
+    let s = 0; for (let i = 0; i < d.length; i++) s += d[i] * d[i];
+    const rms = Math.sqrt(s / d.length);
+    A.level = rms;
+    if (calib.on) calib.samples.push(rms);
+    // 말 덩어리 자르기: 말소리 기준을 넘으면 녹음, 0.45초 조용하면 끝
+    const dur = d.length / A.ctx.sampleRate;
+    if (rms > A.speech) {
+      if (!A.cur) A.cur = { chunks: [], peak: 0, t: performance.now() };
+      A.silence = 0;
+    } else if (A.cur) A.silence += dur;
+    if (A.cur) {
+      A.cur.chunks.push(new Float32Array(d)); A.cur.peak = Math.max(A.cur.peak, rms);
+      const len = A.cur.chunks.length * d.length / A.ctx.sampleRate;
+      if (A.silence > 0.45 || len > 6) finishClip();
+    }
+  };
+  A.ok = true;
+}
+function finishClip() {
+  const c = A.cur; A.cur = null; A.silence = 0;
+  const n = c.chunks.reduce((a, b) => a + b.length, 0), sec = n / A.ctx.sampleRate;
+  if (sec < 0.55) return;
+  const buf = A.ctx.createBuffer(1, n, A.ctx.sampleRate); const out = buf.getChannelData(0);
+  let o = 0; for (const ch of c.chunks) { out.set(ch, o); o += ch.length; }
+  A.clips.push({ buf, peak: c.peak, sec, room: currentRoom ? currentRoom.id : '' });
+  if (A.clips.length > 40) { A.clips.sort((a, b) => b.peak - a.peak); A.clips.length = 30; }
+}
+function playClip(clip, pos, { muffled = false, gain = 1.4, spatial = true } = {}) {
+  if (!A.ctx || !clip) return;
+  const s = A.ctx.createBufferSource(); s.buffer = clip.buf;
+  let node = s;
+  if (muffled) { const lp = A.ctx.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 520; lp.Q.value = 0.7; s.connect(lp); node = lp; }
+  const g = A.ctx.createGain(); g.gain.value = gain;
+  if (spatial) {
+    const p = A.ctx.createPanner(); p.panningModel = 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = 1.2; p.rolloffFactor = 1.3; p.maxDistance = 40;
+    setPos(p, pos.x, pos.y, pos.z); node.connect(p); p.connect(g);
+  } else node.connect(g);
+  g.connect(A.ctx.destination); s.start();
+  return s;
+}
+function setPos(p, x, y, z) { if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; } else p.setPosition(x, y, z); }
+function updateListener() {
+  if (!A.ctx) return;
+  const L = A.ctx.listener, fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw);
+  if (L.positionX) { L.positionX.value = player.x; L.positionY.value = EYE; L.positionZ.value = player.z; L.forwardX.value = fx; L.forwardY.value = 0; L.forwardZ.value = fz; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+  else { L.setPosition(player.x, EYE, player.z); L.setOrientation(fx, 0, fz, 0, 1, 0); }
+}
+function randomClip(pref) { if (!A.clips.length) return null; const pool = pref ? A.clips.filter(pref) : A.clips; const arr = pool.length ? pool : A.clips; return arr[Math.floor(Math.random() * arr.length)]; }
+
+/* 소리 크기 맞추기 */
+const calib = { on: false, samples: [] };
+async function runCalib() {
+  const txt = document.getElementById('calibText'), res = document.getElementById('calibResult'), go = document.getElementById('btnGo');
+  go.disabled = true; res.textContent = '';
+  txt.textContent = '1. 잠깐 조용히 해 주세요.';
+  calib.samples = []; calib.on = true; await wait(1500); calib.on = false;
+  const quiet = avg(calib.samples);
+  txt.innerHTML = '2. 평소 목소리로 <b>"안녕하세요, 테스트 중입니다"</b>라고 말해 주세요.';
+  calib.samples = []; calib.on = true; await wait(3200); calib.on = false;
+  const loud = calib.samples.filter(v => v > quiet * 2.2);
+  const talk = loud.length > 4 ? avg(loud) : 0.04;
+  A.floor = Math.max(quiet, 0.0015);
+  A.speech = Math.max(A.floor * 2.6, talk * 0.5);
+  A.shout = Math.max(talk * 1.9, A.floor * 9);
+  txt.textContent = '다 됐어요.';
+  res.textContent = loud.length > 4 ? '말소리 기준과 고함 기준을 맞췄어요. 오른쪽 아래 마이크 막대의 흰 선 두 개가 그 기준이에요.' : '말소리가 잘 안 잡혔어요. 기본값으로 진행하거나 다시 재 보세요.';
+  go.disabled = false; go.focus();
+}
+const wait = ms => new Promise(r => setTimeout(r, ms));
+const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+setInterval(() => { if (calib.on || document.getElementById('calib').style.display !== 'none') document.getElementById('calibFill').style.width = Math.min(100, A.level / 0.15 * 100) + '%'; }, 60);
+
+/* ================= 음성 인식 ================= */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const srBadge = document.getElementById('srBadge');
+if (SR) { srBadge.textContent = '음성 인식 사용 가능'; srBadge.className = 'badge ok'; }
+else { srBadge.textContent = '이 브라우저는 음성 인식이 안 돼요 · 음성 문은 T키로 통과'; srBadge.className = 'badge bad'; }
+const rec = { r: null, door: null, live: false, blocked: !SR };
+function norm(s) { return (s || '').replace(/[^0-9a-zA-Z가-힣]/g, '').toLowerCase(); }
+function lev(a, b) { const m = a.length, n = b.length, d = Array.from({ length: m + 1 }, (_, i) => [i]); for (let j = 1; j <= n; j++) d[0][j] = j; for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)); return d[m][n]; }
+function matches(heard, door) {
+  const h = norm(heard), t = norm(door.phrase);
+  if (!h) return false;
+  if (h.includes(t)) return true;
+  if (door.kind === 'sesame' && h.includes('참깨') && (h.includes('열려') || h.includes('열러') || h.includes('열어'))) return true;
+  // 들은 문장 안에서 문구 길이만큼 잘라 가장 비슷한 부분을 찾음
+  let best = 0;
+  for (let i = 0; i <= Math.max(0, h.length - t.length); i++) { const part = h.substr(i, t.length + 1); best = Math.max(best, 1 - lev(part, t) / Math.max(part.length, t.length)); }
+  return best >= 0.62;
+}
+function startRec(door) {
+  if (rec.blocked || rec.live) return;
+  rec.door = door;
+  const r = new SR(); rec.r = r;
+  r.lang = 'ko-KR'; r.continuous = true; r.interimResults = true;
+  r.onresult = e => {
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      const txt = e.results[i][0].transcript.trim();
+      if (!txt || rec.door !== door) continue;
+      door.heard = txt; door.sign.draw();
+      if (!door.open && matches(txt, door)) openDoor(door, door.kind === 'sesame' ? '참깨 문이 열렸어요' : '인증됐어요. 문이 열려요');
+    }
+  };
+  r.onerror = e => {
+    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { rec.blocked = true; toast('음성 인식이 막혀 있어요. 테스트용으로 T키를 누르면 통과해요', 4000); }
+  };
+  r.onend = () => { rec.live = false; rec.r = null; };
+  try { r.start(); rec.live = true; } catch (_) { rec.live = false; }
+}
+function stopRec() { if (rec.r) { try { rec.r.stop(); } catch (_) {} } rec.door = null; }
+function testPass() {
+  const d = nearestDoor(['voice', 'sesame'], 6);
+  if (d && !d.open) { d.heard = '(테스트 통과)'; openDoor(d, '테스트로 통과했어요'); }
+}
+
+/* ================= 게임 상태 ================= */
+let currentRoom = null, dollTimer = 4, boxTimer = 2, rescue = 0, rescued = false, leverDone = false, shoutHold = 0;
+function openDoor(d, msg) { if (d.open) return; d.open = true; if (d.sign) d.sign.draw(); if (msg) toast(msg); }
+function nearestDoor(kinds, maxD) { let best = null, bd = maxD; for (const d of doorObjs) { if (!kinds.includes(d.kind)) continue; const dist = Math.hypot(player.x - d.x, player.z - d.y); if (dist < bd) { bd = dist; best = d; } } return best; }
+function roomAt(x, z) { return ROOMS.find(r => x >= r.x && x <= r.x + r.w && z >= r.y && z <= r.y + r.h) || null; }
+const $ = id => document.getElementById(id);
+let toastT;
+function toast(msg, ms = 2200) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
+
+function update(dt) {
+  // 이동
+  let mx = 0, mz = 0;
+  if (keys.KeyW) mz -= 1; if (keys.KeyS) mz += 1; if (keys.KeyA) mx -= 1; if (keys.KeyD) mx += 1;
+  if (touch.on) { mx += touch.mx; mz += touch.mz; }
+  const L = Math.hypot(mx, mz);
+  if (L > 0) {
+    const run = keys.ShiftLeft || keys.ShiftRight || (touch.on && L > 0.95);
+    const sp = (run ? 5.2 : 3.0) * Math.min(1, L) * dt;
+    mx /= Math.max(1, L); mz /= Math.max(1, L);
+    const fx = -Math.sin(player.yaw), fz = -Math.cos(player.yaw), rx = Math.cos(player.yaw), rz = -Math.sin(player.yaw);
+    const nx = player.x + (rx * mx - fx * mz) * sp, nz = player.z + (rz * mx - fz * mz) * sp;
+    [player.x, player.z] = resolve(nx, nz);
+  }
+  camera.position.set(player.x, EYE, player.z);
+  camera.rotation.set(player.pitch, player.yaw, 0);
+
+  // 방 바뀜
+  const r = roomAt(player.x, player.z);
+  if (r && r !== currentRoom) {
+    currentRoom = r;
+    $('goal').textContent = '목표 : ' + r.goal;
+    $('hint').innerHTML = r.hint;
+  }
+
+  // 손전등
+  if (flashOn) { battery01 = Math.max(0, battery01 - dt / 140); if (battery01 <= 0) { flashOn = false; toast('배터리가 다 됐어요'); } }
+  flash.intensity = flashOn ? 38 * (0.6 + 0.4 * Math.min(1, battery01 * 3)) : 0;
+  $('batt').textContent = '손전등 ' + (flashOn ? '켜짐' : '꺼짐') + ' · 배터리 ' + Math.round(battery01 * 100) + '%';
+  battery.rotation.y += dt * 1.5; battery.position.y = 0.5 + Math.sin(performance.now() / 400) * 0.06;
+  if (battery.visible && Math.hypot(player.x - battery.position.x, player.z - battery.position.z) < 1.1) {
+    battery.visible = false; battGlow.visible = false; battery01 = 1; toast('배터리를 주웠어요. 손전등이 충전됐어요');
+  }
+
+  let prompt = '', gaugeLab = '', gaugeVal = -1;
+
+  // 문
+  for (const d of doorObjs) {
+    let target = 0;
+    const dist = Math.hypot(player.x - d.x, player.z - d.y);
+    if (d.kind === 'normal') target = (!d.locked && dist < 3) ? 1 : 0;
+    else if (d.kind === 'voice' || d.kind === 'sesame') {
+      target = d.open ? 1 : 0;
+      if (!d.open && dist < 6 && A.ok) { if (!rec.live && !rec.blocked) startRec(d); }
+      if (!d.open && dist < 6 && rec.blocked) prompt = '음성 인식이 안 되는 환경이에요 · T키로 테스트 통과';
+    }
+    else if (d.kind === 'lever') target = d.open ? 1 : 0;
+    else if (d.kind === 'shout') {
+      const near = player.z > 44 && player.z < 68.5 && player.x > 2.5 && player.x < 7.5;
+      if (d.open) { shoutHold -= dt; if (shoutHold <= 0) { d.open = false; toast('셔터가 다시 닫혔어요'); } d.p = 1; }
+      else if (near && A.ok && A.level > A.shout) { d.p = Math.min(1, d.p + dt * 0.16 * Math.min(2.2, A.level / A.shout)); if (d.p >= 1) { d.open = true; shoutHold = 3.2; toast('셔터가 다 올라갔어요! 3초 뒤에 닫혀요'); } }
+      else d.p = Math.max(0, d.p - dt * 0.2);
+      target = d.p;
+      if (near && !d.open) { gaugeLab = A.level > A.shout ? '좋아요, 계속 질러요!' : (A.level > A.speech ? '더 크게!' : '소리를 지르세요'); gaugeVal = d.p; }
+      if (d.sign && Math.random() < 0.3) d.sign.draw();
+    }
+    const speed = d.kind === 'shout' ? 6 : 1.6;
+    d.amt += Math.max(-speed * dt, Math.min(speed * dt, target - d.amt));
+    d.mesh.position.y = WALL_H / 2 + d.amt * (WALL_H - 0.25);
+  }
+  // 음성 인식은 해당 문에서 멀어지면 끔
+  if (rec.door && (rec.door.open || Math.hypot(player.x - rec.door.x, player.z - rec.door.y) > 7)) stopRec();
+
+  // 엿듣는 인형: 근처에 있으면 가끔 내 목소리를 따라 함
+  if (currentRoom && currentRoom.id === 'B') {
+    dollTimer -= dt;
+    const dd = Math.hypot(player.x - doll.position.x, player.z - doll.position.z);
+    if (dd < 3 && !prompt) prompt = '인형 근처에서 아무 말이나 해 보세요';
+    if (dollTimer <= 0) {
+      dollTimer = 6 + Math.random() * 4;
+      const c = randomClip();
+      if (c && A.ok) { playClip(c, new THREE.Vector3(doll.position.x, 1.4, doll.position.z)); dHead.rotation.z = 0.15; setTimeout(() => dHead.rotation.z = 0, 900); }
+    }
+  }
+
+  // 레버
+  const dA = Math.hypot(player.x - leverA.x, player.z - leverA.z), dB = Math.hypot(player.x - leverB.x, player.z - leverB.z);
+  let holdingA = false;
+  if (!leverDone && dA < 1.7) {
+    holdingA = useHeld;
+    prompt = holdingA ? '레버를 잡고 있어요 · 크게 "하나 둘 셋!"' : 'E를 꾹 눌러 레버 잡기';
+    if (holdingA && A.ok && A.level > Math.max(A.speech * 1.8, A.shout * 0.75)) {
+      leverDone = true; openDoor(doorObjs.find(d => d.kind === 'lever'), '동료가 같이 당겼어요! 셔터가 열려요');
+    }
+    if (holdingA && !A.ok) prompt = '마이크가 없어서 동료를 부를 수 없어요 · T키로 통과';
+  }
+  if (!leverDone && dB < 1.7) prompt = '반대편 레버는 동료 몫이에요. 다른 레버를 잡고 외쳐 보세요';
+  leverA.pulled += ((holdingA || leverDone ? 1 : 0) - leverA.pulled) * Math.min(1, dt * 10);
+  leverB.pulled += ((leverDone ? 1 : 0) - leverB.pulled) * Math.min(1, dt * 6);
+  leverA.pivot.rotation.z = -leverA.side * leverA.pulled * 0.9;
+  leverB.pivot.rotation.z = -leverB.side * leverB.pulled * 0.9;
+
+  // 상자 구출: 먹먹한 목소리
+  if (!rescued) {
+    const db = Math.hypot(player.x - box.position.x, player.z - box.position.z);
+    if (currentRoom && (currentRoom.id === 'F' || currentRoom.id === 'E') && db < 16) {
+      boxTimer -= dt;
+      if (boxTimer <= 0) { boxTimer = 4 + Math.random() * 2; const c = randomClip(); if (c && A.ok) playClip(c, new THREE.Vector3(box.position.x, 0.9, box.position.z), { muffled: true, gain: 2 }); }
+    }
+    if (db < 1.9) {
+      prompt = useHeld ? '테이프 뜯는 중…' : 'E를 꾹 눌러 동료 꺼내기';
+      rescue = useHeld ? rescue + dt / 2 : Math.max(0, rescue - dt);
+      gaugeLab = '꺼내는 중'; gaugeVal = rescue;
+      if (rescue >= 1) { rescued = true; box.visible = false; freed.visible = true; solids.splice(solids.findIndex(s => Math.abs(s.x1 - 4.45) < 0.01 && Math.abs(s.z1 - 72.95) < 0.01), 1); doorObjs.find(d => d.id === 'd6').locked = false; toast('동료를 꺼냈어요! 다음 방 문이 열려요'); }
+    }
+  }
+
+  // 단상: 명대사
+  if (Math.hypot(player.x - 5, player.z - 83) < 1.9) {
+    prompt = 'E: 오늘의 명대사 듣기';
+    if (usePressed) openResults();
+  }
+
+  usePressed = false;
+  $('prompt').style.display = prompt ? 'block' : 'none'; $('prompt').textContent = prompt;
+  $('gauge').style.display = gaugeVal >= 0 ? 'block' : 'none';
+  if (gaugeVal >= 0) { $('gaugeLab').textContent = gaugeLab; $('gaugeFill').style.width = Math.round(gaugeVal * 100) + '%'; }
+
+  // 마이크 막대
+  const top = A.shout * 1.4;
+  $('micFill').style.width = Math.min(100, A.level / top * 100) + '%';
+  $('micFill').style.background = A.level > A.shout ? '#f2b134' : (A.level > A.speech ? '#3ddc97' : '#4a5560');
+  $('tickSpeech').style.left = (A.speech / top * 100) + '%';
+  $('tickShout').style.left = (A.shout / top * 100) + '%';
+
+  // 소리 셔터 복도 형광등 깜빡임
+  const rE = ROOMS[4];
+  if (rE.lights) for (const l of rE.lights) l.intensity = Math.random() < 0.03 ? 4 : 22;
+
+  updateListener();
+}
+
+/* ================= 화면 흐름 ================= */
+function openResults() {
+  const list = $('clipList'); list.innerHTML = '';
+  const top = [...A.clips].sort((a, b) => b.peak - a.peak).slice(0, 8);
+  if (!top.length) list.innerHTML = '<p>아직 녹음된 목소리가 없어요. 말을 하면서 다시 지나와 보세요.</p>';
+  top.forEach((c, i) => {
+    const row = document.createElement('div'); row.className = 'clip';
+    const b = document.createElement('button'); b.textContent = '▶ 듣기'; b.onclick = () => playClip(c, null, { spatial: false, gain: 1.2 });
+    row.append(b, Object.assign(document.createElement('div'), { textContent: (i + 1) + '위' }), Object.assign(document.createElement('span'), { textContent: c.sec.toFixed(1) + '초 · ' + (c.room ? c.room + '번 방에서' : '') }));
+    list.append(row);
+  });
+  $('results').style.display = 'flex'; document.exitPointerLock?.(); running = false; useHeld = false;
+}
+$('resClose').onclick = () => { $('results').style.display = 'none'; running = true; };
+function toggleHelp() {
+  const h = $('help'), open = h.style.display === 'flex';
+  if ($('start').style.display !== 'none' || $('calib').style.display !== 'none') return;
+  h.style.display = open ? 'none' : 'flex';
+  running = open; useHeld = false;
+  if (!open) document.exitPointerLock?.();
+}
+$('helpClose').onclick = toggleHelp;
+function begin() {
+  $('start').style.display = 'none'; $('calib').style.display = 'none';
+  running = true;
+  if (!touch.on) { renderer.domElement.requestPointerLock?.(); toast('Tab을 누르면 조작법이 나와요', 3000); }
+}
+$('btnMic').onclick = async () => {
+  $('startErr').textContent = '';
+  try {
+    await initMic();
+    $('start').style.display = 'none'; $('calib').style.display = 'flex';
+    runCalib();
+  } catch (e) {
+    $('startErr').textContent = '마이크를 켜지 못했어요. 주소창 왼쪽 자물쇠를 눌러 마이크를 허용한 뒤 새로고침하세요. https 주소나 내 컴퓨터에서 연 파일이어야 해요.';
+  }
+};
+$('btnNoMic').onclick = () => { A.ctx = new (window.AudioContext || window.webkitAudioContext)(); rec.blocked = true; begin(); toast('마이크 없이 둘러보는 중 · 음성 문과 레버는 T키로 통과', 4000); };
+$('btnRecal').onclick = () => runCalib();
+$('btnGo').onclick = () => { A.ctx.resume(); begin(); };
+// 마이크 없이 둘러볼 때 레버도 T키로 통과
+addEventListener('keydown', e => { if (e.code === 'KeyT' && running && !A.ok && Math.hypot(player.x - leverA.x, player.z - leverA.z) < 2 && !leverDone) { leverDone = true; openDoor(doorObjs.find(d => d.kind === 'lever'), '테스트로 통과했어요'); } if (e.code === 'KeyT' && running && !A.ok) { const d = doorObjs.find(d => d.kind === 'shout'); if (player.z > 60 && player.z < 68.5 && !d.open) { d.p = 1; d.open = true; shoutHold = 3.2; toast('테스트로 통과했어요'); } } });
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (running) update(dt);
+  else { camera.position.set(player.x, EYE, player.z); camera.rotation.set(player.pitch, player.yaw, 0); }
+  renderer.render(scene, camera);
+  requestAnimationFrame(loop);
+}
+currentRoom = null;
+$('goal').textContent = '목표 : ' + ROOMS[0].goal; $('hint').innerHTML = ROOMS[0].hint;
+requestAnimationFrame(loop);
+window.__vt = { player, A, doorObjs, begin, update };
+</script>
+</body>
+</html>
