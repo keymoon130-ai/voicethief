@@ -1,9 +1,16 @@
 # Voice Thief
 
-친구들끼리 근거리 보이스챗으로 하는 장난감 공장 협동 호러 코미디 웹게임.
+친구들끼리 근거리 보이스챗으로 하는 장난감 공장 협동 호러 코미디 웹게임 (2~6명).
 
-지금 들어 있는 것: `public/index.html` — 토토 없이 기믹만 체험하는 시연용 시제품
-(손전등, 엿듣는 인형, 음성 출입문, 열려라 참깨 문, 레버 협동, 소리 지르기 셔터, 상자 구출, 오늘의 명대사).
+- `/` — 게임 (방 만들기 → 방 코드 공유 → 참가 → 시작)
+- `/demo.html` — 혼자 기믹만 체험하는 시연판
 
-Cloudflare Workers 정적 자산으로 배포돼요 (`wrangler.toml`).
-마이크와 음성 인식이 쓰이므로 https 주소에서 크롬으로 열어야 해요.
+## 구조
+- `src/worker.js` — Cloudflare Worker + Durable Object(`Room`): 방 코드별 실시간 중계. 판정은 방장 브라우저가 함
+- `public/js/game.js` — 게임 흐름, 방장 판정(토토 AI, 문, 퓨즈, 탈출), 화면
+- `public/js/world.js` — 확정 배치(`layout.js`)로 3D 공장 생성, 충돌·시야·길찾기
+- `public/js/audio.js` — 마이크, 녹음, 거리별 재생, 음성 인식, 분위기 소리
+- `public/js/net.js` — WebSocket + WebRTC 보이스챗
+- `public/js/toto.js` — 토토 3D 모델
+
+크롬 + https 주소에서 마이크와 음성 인식이 동작해요. 보이스챗은 STUN만 써서, 일부 회사·학교 네트워크에서는 연결이 안 될 수 있어요.
