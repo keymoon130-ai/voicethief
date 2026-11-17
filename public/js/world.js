@@ -115,6 +115,7 @@ const POSTERS = [
   [1.4, 0.55, (g, w, h) => { g.fillStyle = '#2f7d6d'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff6d8'; g.textAlign = 'center'; g.font = '900 38px "Noto Sans KR",sans-serif'; g.fillText('웃으면서 일해요!', w / 2, h * 0.5); g.font = '700 20px "Noto Sans KR",sans-serif'; g.fillText('따라쟁이 토이즈 · 행복한 일터', w / 2, h * 0.82); }]
 ];
 const POSTER_MATS = POSTERS.map(([pw, ph, draw]) => { const t = canvasTex(Math.round(pw * 320), Math.round(ph * 320), (g, w, h) => { draw(g, w, h); age(g, w, h); }); return { pw, ph, m: new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, transparent: true, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2 }) }; });
+const HAZARD = (() => { const t = canvasTex(256, 64, (g, w, h) => { g.fillStyle = '#d8a52a'; g.fillRect(0, 0, w, h); g.fillStyle = '#151515'; for (let x = -h; x < w + h; x += 32) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 16, 0); g.lineTo(x + 16 + h, h); g.lineTo(x + h, h); g.fill(); } grime(g, w, h, 120); }); t.wrapS = THREE.RepeatWrapping; t.repeat.set(1, 1); return new THREE.MeshStandardMaterial({ map: t, roughness: 0.8 }); })();
 const STAIN = (() => { const t = canvasTex(256, 256, (g, w, h) => { for (let i = 0; i < 18; i++) { const x = w / 2 + (Math.random() - 0.5) * w * 0.5, y = h / 2 + (Math.random() - 0.5) * h * 0.5, r = 20 + Math.random() * 70; const grd = g.createRadialGradient(x, y, 0, x, y, r); grd.addColorStop(0, 'rgba(18,12,6,0.5)'); grd.addColorStop(1, 'rgba(18,12,6,0)'); g.fillStyle = grd; g.fillRect(0, 0, w, h); } }); return new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -3 }); })();
 const DRIP = (() => { const t = canvasTex(128, 256, (g, w, h) => { for (let i = 0; i < 9; i++) { const x = Math.random() * w, L = h * (0.3 + Math.random() * 0.7), ww = 3 + Math.random() * 8; const grd = g.createLinearGradient(0, 0, 0, L); grd.addColorStop(0, 'rgba(70,32,12,0.75)'); grd.addColorStop(1, 'rgba(70,32,12,0)'); g.fillStyle = grd; g.fillRect(x, 0, ww, L); } }); return new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); })();
 
@@ -278,18 +279,180 @@ export function buildWorld(scene) {
     }
   }
   parts.count = pi; heads.count = hi; scene.add(parts, heads);
+  const puddle = new THREE.MeshPhongMaterial({ color: '#0b0d10', shininess: 120, specular: '#556' });
+  for (const [px, pz, s] of [[80, 75, 1.6], [70, 50, 2.2], [110, 55, 2], [62, 45, 1.2], [88, 30, 1.8], [79, 100, 1.4]]) {
+    const m = new THREE.Mesh(new THREE.CircleGeometry(s, 20), puddle); m.rotation.x = -Math.PI / 2; m.position.set(px, 0.01, pz); m.scale.y = 0.6; scene.add(m);
+  }
+
+  // ===== 공간 디테일: 천장 철골, 배관, 기둥, 기계 =====
+  {
+    const IM = new Map();
+    const put = (key, geo, mat, x, y, z, sx = 1, sy = 1, sz = 1, rx = 0, ry = 0, rz = 0) => {
+      if (!IM.has(key)) IM.set(key, { geo, mat, list: [] });
+      tmp.position.set(x, y, z); tmp.rotation.set(rx, ry, rz); tmp.scale.set(sx, sy, sz); tmp.updateMatrix(); IM.get(key).list.push(tmp.matrix.clone());
+    };
+    const unitBox = new THREE.BoxGeometry(1, 1, 1), unitCyl = new THREE.CylinderGeometry(1, 1, 1, 12, 1, false);
+    const steel = new THREE.MeshStandardMaterial({ color: '#2b2d30', metalness: 0.6, roughness: 0.55 });
+    const rustSteel = pbr('metal', { color: '#6d6a66', metal: 0.5 });
+    const pipeMats = ['#7a2f28', '#2f4f6b', '#8a7a3a', '#55595e', '#3f5d4a'].map(c => new THREE.MeshStandardMaterial({ color: c, metalness: 0.45, roughness: 0.6 }));
+    const R = (a, b) => a + Math.random() * (b - a);
+    const free = (x, z, w, d, m = 2.2) => {
+      if (LAYOUT.objects.some(o => Math.abs(o.x - x) < w / 2 + m && Math.abs(o.y - z) < d / 2 + m)) return false;
+      if (LAYOUT.doors.some(o => Math.abs(o.x - x) < w / 2 + 3 + (o.o === 'h' ? o.len / 2 : 0) && Math.abs(o.y - z) < d / 2 + 3 + (o.o === 'v' ? o.len / 2 : 0))) return false;
+      if (solids.some(q => x + w / 2 > q.x1 - 1 && x - w / 2 < q.x2 + 1 && z + d / 2 > q.z1 - 1 && z - d / 2 < q.z2 + 1)) return false;
+      return true;
+    };
+    const isBig = r => r.type !== 'corridor' && r.w * r.h > 150;
+    for (const r of rooms) {
+      const yB = WALL_H - 0.18;
+      // 천장 철골: 짧은 쪽으로 가로지르는 보
+      if (r.type === 'corridor') {
+        const along = r.w > r.h;
+        for (let a = 1.5; a < (along ? r.w : r.h) - 1; a += 3) {
+          if (along) put('beam', unitBox, steel, r.x + a, yB, r.y + r.h / 2, 0.14, 0.26, r.h); else put('beam', unitBox, steel, r.x + r.w / 2, yB, r.y + a, r.w, 0.26, 0.14);
+        }
+      } else {
+        const acrossX = r.w < r.h; const L = acrossX ? r.h : r.w;
+        for (let a = 2; a < L - 1; a += 4) {
+          if (acrossX) { put('beam', unitBox, steel, r.x + r.w / 2, yB, r.y + a, r.w, 0.34, 0.16); put('flange', unitBox, steel, r.x + r.w / 2, yB - 0.17, r.y + a, r.w, 0.03, 0.3); }
+          else { put('beam', unitBox, steel, r.x + a, yB, r.y + r.h / 2, 0.16, 0.34, r.h); put('flange', unitBox, steel, r.x + a, yB - 0.17, r.y + r.h / 2, 0.3, 0.03, r.h); }
+        }
+        if (isBig(r)) {
+          // 세로 보 두 줄 + 대각 가새
+          for (const f of [0.33, 0.67]) {
+            if (acrossX) put('beam', unitBox, steel, r.x + r.w * f, yB - 0.3, r.y + r.h / 2, 0.12, 0.2, r.h); else put('beam', unitBox, steel, r.x + r.w / 2, yB - 0.3, r.y + r.h * f, r.w, 0.2, 0.12);
+          }
+        }
+      }
+      // 배관: 공장·복도 벽을 따라 천장 아래로
+      if (r.type !== 'intro' || r.name === '토토 광장') {
+        const runs = r.type === 'corridor' ? 1 + (Math.random() < 0.5 ? 1 : 0) : 2;
+        const walls = [{ o: 'h', z: r.y + 0.42, a: r.x, b: r.x + r.w }, { o: 'h', z: r.y + r.h - 0.42, a: r.x, b: r.x + r.w }, { o: 'v', x: r.x + 0.42, a: r.y, b: r.y + r.h }, { o: 'v', x: r.x + r.w - 0.42, a: r.y, b: r.y + r.h }]
+          .filter(w => (w.b - w.a) > 5).sort(() => Math.random() - 0.5).slice(0, runs);
+        for (const w of walls) {
+          const n = 1 + (Math.random() * 3 | 0);
+          for (let k = 0; k < n; k++) {
+            const rad = R(0.05, 0.12), y = WALL_H - 0.5 - k * 0.3, mat = pipeMats[(Math.random() * pipeMats.length) | 0], off = k * 0.06;
+            const mid = (w.a + w.b) / 2, len = w.b - w.a - 0.3;
+            if (w.o === 'h') put('pipe' + mat.uuid, unitCyl, mat, mid, y, w.z + (w.z > r.y + r.h / 2 ? -off : off), rad, len, rad, 0, 0, Math.PI / 2);
+            else put('pipe' + mat.uuid, unitCyl, mat, w.x + (w.x > r.x + r.w / 2 ? -off : off), y, mid, rad, len, rad, Math.PI / 2, 0, 0);
+            for (let a = w.a + 1; a < w.b - 0.5; a += 2.2) {
+              if (w.o === 'h') put('clamp', unitBox, steel, a, y, w.z, 0.06, rad * 2.6, rad * 2.6 + 0.3); else put('clamp', unitBox, steel, w.x, y, a, rad * 2.6 + 0.3, rad * 2.6, 0.06);
+            }
+            // 바닥까지 내려오는 관과 밸브
+            if (k === 0 && Math.random() < 0.7) {
+              const a = R(w.a + 2, w.b - 2), px = w.o === 'h' ? a : w.x, pz = w.o === 'h' ? w.z : a;
+              if (free(px, pz, 0.4, 0.4, 0.8)) {
+                put('pipe' + mat.uuid, unitCyl, mat, px, y / 2, pz, rad, y, rad);
+                const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.16, 0.025, 6, 16), new THREE.MeshStandardMaterial({ color: '#a8352b', roughness: 0.6, metalness: 0.4 }));
+                wheel.position.set(px + (w.o === 'v' ? (w.x > r.x + r.w / 2 ? -0.18 : 0.18) : 0), 1.25, pz + (w.o === 'h' ? (w.z > r.y + r.h / 2 ? -0.18 : 0.18) : 0)); wheel.rotation.y = w.o === 'h' ? 0 : Math.PI / 2; scene.add(wheel);
+              }
+            }
+          }
+        }
+      }
+    }
+    // 생산라인: 컨베이어 벨트 (중간에 끊겨서 지나갈 수 있음) + 프레스
+    const belt = new THREE.MeshStandardMaterial({ color: '#1b1b1d', roughness: 0.9 });
+    const conveyor = (x1, x2, z) => {
+      const len = x2 - x1, cx = (x1 + x2) / 2;
+      put('cvframe', unitBox, rustSteel, cx, 0.7, z, len, 0.14, 1.3);
+      put('cvbelt', unitBox, belt, cx, 0.79, z, len - 0.1, 0.04, 1.1);
+      for (let x = x1 + 0.3; x < x2; x += 1.6) for (const s of [-0.6, 0.6]) put('leg', unitBox, steel, x, 0.32, z + s, 0.1, 0.64, 0.1);
+      for (let x = x1 + 0.15; x < x2; x += 0.35) put('roller', unitCyl, steel, x, 0.72, z, 0.05, 1.2, 0.05, Math.PI / 2, 0, 0);
+      // 벨트 위 미완성 인형 부품
+      for (let x = x1 + 0.8; x < x2 - 0.5; x += R(1.2, 2.4)) put('torso', new THREE.CapsuleGeometry(0.16, 0.25, 3, 8), new THREE.MeshStandardMaterial({ color: '#8fcfb6', roughness: 0.7 }), x, 0.97, z + R(-0.2, 0.2), 1, 1, 1, Math.PI / 2, 0, R(0, 3));
+      solid(cx, z, len, 1.3);
+    };
+    const press = (x, z) => {
+      const g = new THREE.Group(); g.position.set(x, 0, z);
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.6, 1.4), pbr('metal_yellow', { metal: 0.4 })), 0, 0.3, 0));
+      for (const s of [-0.65, 0.65]) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.22, 2.6, 0.22), steel), s, 1.6, 0));
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.5, 1.2), pbr('metal_yellow', { metal: 0.4 })), 0, 2.8, 0));
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1, 0.35, 0.9), steel), 0, 1.6, 0));
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 6), new THREE.MeshBasicMaterial({ color: '#ff3b2f' })); lamp.position.set(0.6, 3.1, 0.4); g.add(lamp);
+      scene.add(g); solid(x, z, 1.6, 1.4);
+    };
+    for (const [a, b] of [[66, 75], [79, 88], [91, 96]]) if (free((a + b) / 2, 8.5, b - a, 1.3, 1.2)) conveyor(a, b, 8.5);
+    for (const [x, z] of [[70.5, 5.5], [84, 5.5], [74, 12.5], [89, 12.5]]) if (free(x, z, 1.6, 1.4, 1.6)) press(x, z);
+    // 발전실: 누운 발전기 통
+    for (const [x, z] of [[103, 5], [116, 5], [103, 12], [116, 12.5]]) {
+      if (!free(x, z, 3.4, 2, 1.8)) continue;
+      const g = new THREE.Group(); g.position.set(x, 0, z);
+      const tank = new THREE.Mesh(new THREE.CylinderGeometry(0.85, 0.85, 3, 20), pbr('metal_yellow', { metal: 0.5 })); tank.rotation.z = Math.PI / 2; tank.position.y = 1.05; g.add(tank);
+      for (const s of [-1.6, 1.6]) g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.9, 0.9, 0.12, 20), steel), s, 1.05, 0).rotateZ(Math.PI / 2));
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(3.2, 0.25, 1.5), steel), 0, 0.12, 0));
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.7, 0.5, 0.05), new THREE.MeshBasicMaterial({ color: '#0c1a12' })), 0, 1.25, 0.86));
+      scene.add(g); solid(x, z, 3.4, 1.9);
+    }
+    // 포장 창고: 철제 선반 + 상자
+    for (const [x, z] of [[113, 27], [113, 32.5], [119, 27], [119, 32.5]]) {
+      if (!free(x, z, 4, 1, 1.5)) continue;
+      for (const sx of [-1.9, 1.9]) for (const sz of [-0.45, 0.45]) put('rackpost', unitBox, pbr('metal', { color: '#3b5c88', metal: 0.4 }), x + sx, 1.4, z + sz, 0.08, 2.8, 0.08);
+      for (const y of [0.15, 1.05, 1.95, 2.75]) {
+        put('rackshelf', unitBox, rustSteel, x, y, z, 3.9, 0.06, 1);
+        for (let bx = -1.6; bx < 1.7; bx += R(0.6, 1.1)) if (Math.random() < 0.75) { const sz = R(0.4, 0.7); put('rackbox', uvBox(new THREE.BoxGeometry(1, 1, 1), 1, 1, 1, 1.6), pbr('cardboard'), x + bx, y + 0.03 + sz / 2, z + R(-0.1, 0.1), sz, sz * R(0.7, 1), sz, 0, R(-0.2, 0.2), 0); }
+      }
+      solid(x, z, 4, 1);
+    }
+    // 하역장: 팔레트 더미
+    for (const [x, z] of [[44, 48], [56, 48], [44, 56], [56, 56], [50, 57]]) {
+      if (!free(x, z, 1.3, 1.1, 1.8)) continue;
+      const h = 1 + (Math.random() * 4 | 0);
+      for (let i = 0; i < h; i++) put('pallet', unitBox, new THREE.MeshStandardMaterial({ color: '#7a6040', roughness: 0.95 }), x, 0.07 + i * 0.15, z, 1.2, 0.12, 1, 0, R(-0.08, 0.08), 0);
+      solid(x, z, 1.3, 1.1);
+    }
+    // 소각로: 불 꺼지지 않은 화덕
+    {
+      const x = 120.6, z = 50.5;
+      if (free(x, z, 1.6, 3, 1)) {
+        const g = new THREE.Group(); g.position.set(x, 0, z);
+        g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.6, 2.6, 3.2), pbr('brick', { color: '#5a4c46' })), 0, 1.3, 0));
+        const mouth = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.9), new THREE.MeshBasicMaterial({ color: '#ff7a2a' })); mouth.position.set(-0.81, 0.85, 0); mouth.rotation.y = -Math.PI / 2; g.add(mouth);
+        for (let i = -3; i <= 3; i++) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.95, 0.05), steel), -0.84, 0.85, i * 0.24));
+        g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.2, 12), steel), 0, 3.0, 0.8));
+        const glow = new THREE.PointLight('#ff6a2a', 6, 7, 1.5); glow.position.set(-1.4, 0.9, 0); g.add(glow);
+        lights.push({ l: glow, lamp: mouth, base: 6, flicker: 0.3, roomName: '소각로 · 토토 둥지', on: true, fire: true });
+        scene.add(g); solid(x, z, 1.6, 3.2);
+      }
+    }
+    // 사무실: 책상과 모니터
+    for (const [x, z] of [[44, 12], [48, 15.5], [53, 12], [57.5, 15.5]]) {
+      if (!free(x, z, 1.6, 0.8, 1.2)) continue;
+      const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = R(-0.15, 0.15);
+      const wood = new THREE.MeshStandardMaterial({ color: '#5a4430', roughness: 0.8 });
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.05, 0.8), wood), 0, 0.75, 0));
+      for (const sx of [-0.75, 0.75]) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.75, 0.75), wood), sx, 0.375, 0));
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.36, 0.3), new THREE.MeshStandardMaterial({ color: '#c9c2b0', roughness: 0.7 })), -0.2, 0.96, -0.1));
+      g.add(at(new THREE.Mesh(new THREE.PlaneGeometry(0.4, 0.27), new THREE.MeshBasicMaterial({ color: Math.random() < 0.3 ? '#1f4a3a' : '#0a0c0b' })), -0.2, 0.97, 0.052));
+      for (let i = 0; i < 4; i++) g.add(at(new THREE.Mesh(new THREE.PlaneGeometry(0.21, 0.29), new THREE.MeshStandardMaterial({ color: '#ddd6c4' })), R(0.1, 0.6), 0.78 + i * 0.002, R(-0.25, 0.25)).rotateX(-Math.PI / 2).rotateZ(R(0, 3)));
+      scene.add(g); solid(x, z, 1.6, 0.8);
+    }
+    for (const r of rooms) {
+      // 기둥 (기계를 먼저 놓고 남은 자리에): 큰 방에 격자로
+      if (isBig(r) && !/광장/.test(r.name)) {
+        const nx = Math.max(1, Math.round(r.w / 9)), nz = Math.max(1, Math.round(r.h / 9));
+        for (let i = 1; i < nx + 1; i++) for (let j = 1; j < nz + 1; j++) {
+          const px = r.x + r.w * i / (nx + 1), pz = r.y + r.h * j / (nz + 1);
+          if (!free(px, pz, 0.7, 0.7, 2.4)) continue;
+          const m = new THREE.Mesh(uvBox(new THREE.BoxGeometry(0.7, WALL_H, 0.7), 0.7, WALL_H, 0.7, 3.6), pbr('concrete', { color: '#a59e92' })); m.position.set(px, WALL_H / 2, pz); scene.add(m);
+          const band = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.9, 0.72), HAZARD); band.position.set(px, 0.45, pz); scene.add(band);
+          put('beam', unitBox, steel, px, WALL_H - 0.4, pz, 0.9, 0.12, 0.9);
+          solid(px, pz, 0.7, 0.7);
+        }
+      }
+    }
+    for (const { geo, mat, list } of IM.values()) { const im = new THREE.InstancedMesh(geo, mat, list.length); list.forEach((m, i) => im.setMatrixAt(i, m)); im.castShadow = true; im.receiveShadow = true; scene.add(im); }
+  }
+
   const boxMat = pbr('cardboard');
   for (const name of ['포장 창고', '하역장', '로비', '소각로 · 토토 둥지']) {
     const r = rooms.find(q => q.name === name);
     for (let i = 0; i < (name === '포장 창고' ? 10 : 4); i++) {
       const s = 0.6 + Math.random() * 0.6, bx = r.x + 1.5 + Math.random() * (r.w - 3), bz = r.y + 1.5 + Math.random() * (r.h - 3);
-      if (LAYOUT.objects.some(o => Math.hypot(o.x - bx, o.y - bz) < 2.2) || LAYOUT.doors.some(d => Math.hypot(d.x - bx, d.y - bz) < 3)) continue;
+      if (solids.some(q => bx > q.x1 - 1.2 && bx < q.x2 + 1.2 && bz > q.z1 - 1.2 && bz < q.z2 + 1.2) || LAYOUT.objects.some(o => Math.hypot(o.x - bx, o.y - bz) < 2.2) || LAYOUT.doors.some(d => Math.hypot(d.x - bx, d.y - bz) < 3)) continue;
       const m = new THREE.Mesh(uvBox(new THREE.BoxGeometry(s, s, s), s, s, s, s * 1.6), boxMat); m.position.set(bx, s / 2, bz); m.rotation.y = Math.random(); scene.add(m); solid(bx, bz, s * 1.1, s * 1.1);
     }
-  }
-  const puddle = new THREE.MeshPhongMaterial({ color: '#0b0d10', shininess: 120, specular: '#556' });
-  for (const [px, pz, s] of [[80, 75, 1.6], [70, 50, 2.2], [110, 55, 2], [62, 45, 1.2], [88, 30, 1.8], [79, 100, 1.4]]) {
-    const m = new THREE.Mesh(new THREE.CircleGeometry(s, 20), puddle); m.rotation.x = -Math.PI / 2; m.position.set(px, 0.01, pz); m.scale.y = 0.6; scene.add(m);
   }
 
   // 조명: 몇 군데만 켜져 있고 대부분 어둠. 깜빡이는 형광등, 붉은 비상등
