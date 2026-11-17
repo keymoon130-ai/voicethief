@@ -72,6 +72,45 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .meter div{height:100%;width:0;background:var(--ok)}
 .sec{border-top:1px solid var(--line);padding-top:12px;display:flex;flex-direction:column;gap:8px}
 label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink)}
+/* ===== 메인 화면 ===== */
+#lobby{position:fixed;inset:0;z-index:10;pointer-events:none}
+#lobby > *{pointer-events:auto}
+#lobby .mm-shade{position:absolute;inset:0;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.88) 0%,rgba(0,0,0,.55) 30%,rgba(0,0,0,0) 55%)}
+.mm-logo{position:absolute;left:clamp(18px,4vw,56px);top:clamp(14px,4vh,40px);pointer-events:none}
+.mm-brand{display:inline-flex;align-items:baseline;gap:1px;font-weight:900;font-size:clamp(20px,2.6vw,30px);letter-spacing:-.02em;padding:4px 12px 6px;border-radius:14px;background:#f4ead2;box-shadow:0 0 0 3px #1b1712,0 0 0 5px #d2553f;transform:rotate(-3deg);opacity:.78;filter:sepia(.25) contrast(1.05);-webkit-mask-image:var(--wear);mask-image:var(--wear);-webkit-mask-size:cover;mask-size:cover}
+.mm-brand span{text-shadow:0 2px 0 #1b1712}
+.mm-toys{font-size:.62em;color:#4f8fd0;margin-left:6px;letter-spacing:.08em}
+.mm-since{font-size:11px;letter-spacing:.2em;color:#8d8578;margin:8px 0 0 6px;opacity:.75}
+.mm-title{margin:10px 0 0;font-size:clamp(46px,7vw,92px);line-height:.88;font-weight:900;letter-spacing:.02em;color:#e9e3d6;text-shadow:0 0 18px rgba(143,217,189,.18),0 4px 0 #000;-webkit-mask-image:var(--wear);mask-image:var(--wear);-webkit-mask-size:cover;mask-size:cover}
+#lobby.room .mm-title{font-size:clamp(34px,4vw,48px)}
+#lobby.room .mm-room{top:clamp(150px,30vh,215px);max-height:calc(100vh - clamp(150px,30vh,215px) - 16px)}
+.mm-title.glitch{animation:mmg .18s steps(2) 2}
+@keyframes mmg{0%{transform:translate(2px,0);color:#ff6b6b}50%{transform:translate(-3px,1px);color:#8fd9bd}100%{transform:none}}
+.mm-panel{position:absolute;left:clamp(18px,4vw,56px);bottom:clamp(18px,7vh,70px);width:min(380px,calc(100vw - 36px));display:flex;flex-direction:column;gap:12px}
+.mm-list{display:flex;flex-direction:column;gap:2px}
+.mm-item{all:unset;cursor:pointer;font-size:clamp(20px,2.2vw,26px);font-weight:700;color:#cfc8ba;padding:6px 0 6px 18px;position:relative;letter-spacing:.01em;transition:color .15s,padding .15s}
+.mm-item::before{content:"";position:absolute;left:0;top:50%;width:6px;height:6px;margin-top:-3px;background:#d2553f;border-radius:50%;opacity:0;transition:opacity .15s}
+.mm-item:hover,.mm-item:focus-visible{color:#fff;padding-left:26px}
+.mm-item:hover::before,.mm-item:focus-visible::before{opacity:1}
+.mm-item:disabled{opacity:.4}
+.mm-back{font-size:16px;color:#8d8578}
+.mm-nick{display:flex;align-items:center;gap:10px;font-size:13px;color:#8d8578;letter-spacing:.1em}
+.mm-nick input,.mm-code-in{background:rgba(0,0,0,.45);border:0;border-bottom:1px solid #4a443c;border-radius:0;padding:7px 4px;font-size:17px;color:#eee6d6;flex:1}
+.mm-code-in{font-size:24px;letter-spacing:.3em;text-transform:uppercase;width:100%;margin-bottom:6px}
+.mm-story{margin:4px 0 0;font-size:13px;line-height:1.7;color:#8d8578;max-width:340px}
+.mm-story b{color:#cfc8ba}
+.mm-room{bottom:auto;top:clamp(170px,30vh,260px);max-height:calc(100vh - clamp(170px,30vh,260px) - 16px);overflow:auto;background:rgba(8,8,9,.72);border:1px solid #2b2825;border-radius:12px;padding:16px;backdrop-filter:blur(3px)}
+.mm-lab{font-size:12px;letter-spacing:.14em;color:#8d8578}
+.mm-small{font-size:12.5px;color:var(--muted);margin:0;line-height:1.6}
+.mm-hint{position:absolute;right:20px;bottom:16px;font-size:12px;color:#6d665c;letter-spacing:.08em;pointer-events:none}
+@media (max-width:720px),(max-height:520px){
+  #lobby .mm-shade{background:linear-gradient(0deg,rgba(0,0,0,.9) 0%,rgba(0,0,0,.5) 45%,rgba(0,0,0,.2) 100%)}
+  .mm-title{font-size:clamp(34px,11vw,60px)}
+  .mm-panel{bottom:14px}
+  .mm-story{display:none}
+  .mm-room,#lobby.room .mm-room{top:auto;bottom:10px;max-height:62vh}
+}
+.in-menu .hud{display:none!important}
 .hide{display:none!important}
 #help table{border-collapse:collapse;font-size:14px}
 #help td{padding:5px 10px;border-bottom:1px solid var(--line)}
@@ -115,34 +154,49 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
 <div id="opening"><div class="t1" id="op1"></div><div class="t2" id="op2"></div><div class="t3" id="op3"></div></div>
 <div id="rot">화면을 가로로 돌려주세요</div>
 
-<div class="overlay" id="lobby">
-  <div class="card">
-    <h1>Voice <span>Thief</span></h1>
-    <p>밤의 폐업한 장난감 공장, 「따라쟁이 토이즈」. 친구들과 목소리로 대화하며 퓨즈 4개를 찾아 탈출하세요. 그런데 이 공장에는 <b style="color:var(--ink)">목소리를 따라 하는 무언가</b>가 있어요.</p>
-    <div id="stepJoin" class="sec" style="border:0;padding:0">
-      <div class="row"><input type="text" id="nick" maxlength="10" placeholder="닉네임" style="flex:1" autocomplete="off"></div>
-      <div class="row"><button class="primary" id="btnCreate">방 만들기</button><input type="text" id="codeIn" maxlength="6" placeholder="방 코드" style="width:120px;text-transform:uppercase" autocomplete="off"><button id="btnJoin">참가하기</button></div>
-      <div class="err" id="joinErr" role="alert"></div>
+<div id="lobby">
+  <div class="mm-shade"></div>
+  <header class="mm-logo">
+    <div class="mm-brand"><span style="color:#e2574c">따</span><span style="color:#ef9d3a">라</span><span style="color:#e6c23f">쟁</span><span style="color:#68c08a">이</span><span class="mm-toys">TOYS</span></div>
+    <div class="mm-since">EST. 1987 · 말하는 장난감 전문</div>
+    <h1 class="mm-title">VOICE<br>THIEF</h1>
+  </header>
+
+  <nav class="mm-panel" id="stepJoin">
+    <label class="mm-nick">이름표 <input type="text" id="nick" maxlength="10" placeholder="닉네임을 적으세요" autocomplete="off"></label>
+    <div id="mmMain" class="mm-list">
+      <button class="mm-item" id="btnCreate">새 방 만들기</button>
+      <button class="mm-item" id="mmToJoin">방 코드로 참가</button>
+      <button class="mm-item" id="mmHelp">조작법</button>
     </div>
-    <div id="stepRoom" class="hide" style="display:flex;flex-direction:column;gap:12px">
-      <div class="row"><div><h2>방 코드</h2><div class="code" id="codeShow">----</div></div><button id="btnCopy" style="margin-left:auto">코드 복사</button></div>
-      <div class="plist" id="plist"></div>
-      <p style="font-size:13px">2~6명 · 4명 추천 · 🎧 이어폰을 끼면 친구 목소리가 오는 방향이 들려요</p>
-      <div class="sec">
-        <h2>마이크</h2>
-        <p style="font-size:13px">게임 중 목소리가 녹음되어 게임 연출에 쓰여요. 녹음은 이 판을 같이 하는 사람에게만 전달되고 서버에 저장되지 않아요.</p>
-        <div class="row"><button id="btnMic">마이크 켜기</button><span id="micState" style="font-size:13px;color:var(--muted)"></span></div>
-        <div class="meter"><div id="lobbyMeter"></div></div>
-        <div class="row"><button id="btnCal" disabled>목소리 크기 맞추기</button><span id="calState" style="font-size:13px;color:var(--muted)"></span></div>
-        <div class="err" id="micErr" role="alert"></div>
-      </div>
-      <div class="sec">
-        <label class="chk" id="skipWrap"><input type="checkbox" id="skipTut"> 튜토리얼 건너뛰기 (방장만)</label>
-        <div class="row"><button id="btnReady">준비 완료</button><button class="primary" id="btnStart">시작하기</button></div>
-        <div class="err" id="roomErr" role="alert"></div>
-      </div>
+    <div id="mmJoin" class="mm-list hide">
+      <input type="text" id="codeIn" maxlength="6" placeholder="방 코드 4자리" class="mm-code-in" autocomplete="off">
+      <button class="mm-item" id="btnJoin">참가하기</button>
+      <button class="mm-item mm-back" id="mmBack">← 뒤로</button>
     </div>
-  </div>
+    <div class="err" id="joinErr" role="alert"></div>
+    <p class="mm-story">폐업한 장난감 공장 「따라쟁이 토이즈」. 친구들과 목소리로 대화하며 퓨즈 4개를 찾아 탈출하세요. 이 공장에는 <b>목소리를 따라 하는 무언가</b>가 있어요.</p>
+  </nav>
+
+  <section class="mm-panel mm-room hide" id="stepRoom">
+    <div class="row"><div><div class="mm-lab">방 코드</div><div class="code" id="codeShow">----</div></div><button id="btnCopy" style="margin-left:auto">코드 복사</button></div>
+    <div class="plist" id="plist"></div>
+    <p class="mm-small">2~6명 · 4명 추천 · 🎧 이어폰을 끼면 친구 목소리가 오는 방향이 들려요</p>
+    <div class="sec">
+      <div class="mm-lab">마이크</div>
+      <p class="mm-small">게임 중 목소리가 녹음되어 연출에 쓰여요. 녹음은 이 판을 같이 하는 사람에게만 전달되고 서버에 저장되지 않아요.</p>
+      <div class="row"><button id="btnMic">마이크 켜기</button><span id="micState" class="mm-small"></span></div>
+      <div class="meter"><div id="lobbyMeter"></div></div>
+      <div class="row"><button id="btnCal" disabled>목소리 크기 맞추기</button><span id="calState" class="mm-small"></span></div>
+      <div class="err" id="micErr" role="alert"></div>
+    </div>
+    <div class="sec">
+      <label class="chk" id="skipWrap"><input type="checkbox" id="skipTut"> 튜토리얼 건너뛰기 (방장만)</label>
+      <div class="row"><button id="btnReady">준비 완료</button><button class="primary" id="btnStart">시작하기</button></div>
+      <div class="err" id="roomErr" role="alert"></div>
+    </div>
+  </section>
+  <div class="mm-hint" id="mmSound">화면을 누르면 소리가 켜져요</div>
 </div>
 
 <div class="overlay hide" id="help">

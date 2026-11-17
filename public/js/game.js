@@ -4,7 +4,7 @@ import * as THREE from 'three';
 import { buildWorld, WALL_H } from './world.js';
 import { LAYOUT, TUTORIAL_HINTS } from './layout.js';
 import { buildToto } from './toto.js';
-import { AU, ensureCtx, initMic, encodeClip, decodeClip, playBuf, setListener, makeRemoteVoice, setPos, calibrate, shoutNeed, SR, srStart, srStop, phraseMatch, startAmbience, creak, musicBox, step, rumble, siren, blip } from './audio.js';
+import { AU, ensureCtx, initMic, encodeClip, decodeClip, playBuf, setListener, makeRemoteVoice, setPos, calibrate, shoutNeed, SR, srStart, srStop, phraseMatch, startAmbience, creak, musicBox, step, rumble, siren, blip, startMenuMusic, stopMenuMusic, zap } from './audio.js';
 import { Net } from './net.js';
 
 const $ = id => document.getElementById(id);
@@ -85,7 +85,7 @@ async function join(code) {
     players.clear();
     for (const p of w.peers) addPlayer(p.id, p.name, p.ready);
     $('joinErr').textContent = '';
-    $('stepJoin').classList.add('hide'); $('stepRoom').classList.remove('hide');
+    $('stepJoin').classList.add('hide'); $('stepRoom').classList.remove('hide'); $('lobby').classList.add('room');
     $('codeShow').textContent = code;
     renderPlist();
   } catch (e) {
@@ -161,6 +161,64 @@ function onTrack(id, stream) {
   p.voice = makeRemoteVoice(stream);
 }
 
+
+/* ===== 메인 화면: 어두운 광장에 서 있는 토토 ===== */
+// 바랜 인쇄 느낌 마스크
+{ const c = document.createElement('canvas'); c.width = 256; c.height = 128; const g = c.getContext('2d'); g.fillStyle = '#000'; g.fillRect(0, 0, 256, 128);
+  for (let i = 0; i < 260; i++) g.clearRect(Math.random() * 256, Math.random() * 128, 0.6 + Math.random() * 1.2, 0.6 + Math.random() * 1.2);
+  g.globalCompositeOperation = 'destination-out'; for (let i = 0; i < 18; i++) { g.globalAlpha = 0.1 + Math.random() * 0.35; g.beginPath(); g.arc(Math.random() * 256, Math.random() * 128, 2 + Math.random() * 9, 0, 7); g.fill(); }
+  document.documentElement.style.setProperty('--wear', `url(${c.toDataURL()})`); }
+document.body.classList.add('in-menu');
+const MENU = { on: true, mx: 0, my: 0, hx: 0, hy: 0, next: performance.now() + 5000, fl: null, creepyUntil: 0, sound: false };
+const menuLight = new THREE.SpotLight('#ffe2b8', 60, 18, 0.5, 0.6, 1.3);
+menuLight.position.set(80.6, WALL_H - 0.1, 103.2); menuLight.target.position.set(80, 1.6, 100); scene.add(menuLight, menuLight.target);
+addEventListener('pointermove', e => { MENU.mx = e.clientX / innerWidth * 2 - 1; MENU.my = e.clientY / innerHeight * 2 - 1; });
+function menuSound() { if (MENU.sound || !MENU.on) return; MENU.sound = true; ensureCtx(); startMenuMusic(); $('mmSound').classList.add('hide'); }
+addEventListener('pointerdown', menuSound); addEventListener('keydown', menuSound);
+for (const b of document.querySelectorAll('.mm-item')) { b.addEventListener('pointerenter', () => { if (MENU.sound) blip(520 + Math.random() * 40, 0.05, 0.05); }); }
+$('mmToJoin').onclick = () => { $('mmMain').classList.add('hide'); $('mmJoin').classList.remove('hide'); codeIn.focus(); };
+$('mmBack').onclick = () => { $('mmJoin').classList.add('hide'); $('mmMain').classList.remove('hide'); $('joinErr').textContent = ''; };
+$('mmHelp').onclick = () => setOverlay('help', true);
+function menuTick(dt, now) {
+  // 카메라: 왼쪽 메뉴를 피해 토토를 화면 오른쪽에. 숨 쉬듯 아주 조금 흔들림
+  const narrow = innerWidth < innerHeight * 1.1;
+  const bx = narrow ? 80 : 77.6, br = Math.sin(now / 2300) * 0.04;
+  camera.position.set(80 + (narrow ? 0 : -1.4) + Math.sin(now / 7000) * 0.25 + MENU.mx * 0.12, 1.45 + br, 106.6 + (narrow ? 2 : 0));
+  camera.lookAt(bx + MENU.mx * 0.15, 2.05 + (narrow ? 0.2 : 0) - MENU.my * 0.08, 100);
+  // 고개가 커서를 천천히 따라옴
+  const cute = totoCute.userData.head, base = totoCute.userData.headRot;
+  MENU.hx += ((MENU.mx * 0.45) - MENU.hx) * Math.min(1, dt * 0.9); MENU.hy += ((MENU.my * 0.18) - MENU.hy) * Math.min(1, dt * 0.9);
+  if (cute) { cute.rotation.y = base.y + MENU.hx; cute.rotation.x = base.x + MENU.hy; }
+  // 깜빡임: 가끔 불이 나가고, 그 사이 한두 프레임 다른 얼굴
+  if (!MENU.fl && now > MENU.next) {
+    const seq = [], n = 3 + (Math.random() * 4 | 0); let t = now;
+    for (let i = 0; i < n; i++) { seq.push([t, 0.05]); t += 50 + Math.random() * 120; seq.push([t, 1]); t += 40 + Math.random() * 160; }
+    const scare = Math.random() < 0.55; if (scare) { const k = 2 + (Math.random() * (seq.length - 3) | 0); seq[k] = [seq[k][0], -1]; }
+    seq.push([t, 1]); MENU.fl = seq; MENU.next = t + 6000 + Math.random() * 9000;
+    if (MENU.sound) zap(0.12 + Math.random() * 0.1);
+  }
+  let lvl = 1, creepy = false;
+  if (MENU.fl) {
+    let cur = MENU.fl[0];
+    for (const f of MENU.fl) if (f[0] <= now) cur = f;
+    if (now > MENU.fl[MENU.fl.length - 1][0] + 30) MENU.fl = null;
+    else { lvl = cur[1] < 0 ? 0.9 : cur[1]; creepy = cur[1] < 0; }
+  }
+  lvl *= 0.92 + Math.sin(now / 37) * 0.03 + Math.random() * 0.05;
+  menuLight.intensity = 60 * lvl; menuLight.color.set(creepy ? '#ff6a55' : '#ffe2b8');
+  for (const l of world.lights) l.l.intensity = l.base * (l.roomName === '토토 광장' ? lvl * 0.6 : 0.15);
+  totoCute.visible = !creepy; totoCreepy.visible = creepy;
+  if (creepy) { totoRig.rotation.y = MENU.hx * 0.6; const ch = totoCreepy.userData.head; if (ch) ch.rotation.y = totoCreepy.userData.headRot.y + MENU.hx * 1.2; if (!MENU.wasCreepy && MENU.sound) { blip(70, 0.5, 0.25); $('lobby').querySelector('.mm-title').classList.add('glitch'); setTimeout(() => $('lobby').querySelector('.mm-title').classList.remove('glitch'), 400); } }
+  else totoRig.rotation.y = 0;
+  MENU.wasCreepy = creepy;
+}
+function menuEnd() {
+  if (!MENU.on) return; MENU.on = false; stopMenuMusic(); document.body.classList.remove('in-menu'); scene.remove(menuLight, menuLight.target); menuLight.dispose();
+  totoCute.visible = true; totoCreepy.visible = false; totoRig.rotation.y = 0;
+  const h = totoCute.userData.head; if (h) h.rotation.copy(totoCute.userData.headRot);
+  for (const l of world.lights) l.l.intensity = l.base;
+}
+
 /* ===== 내 목소리 녹음 → 친구들에게 공유 ===== */
 let clipSeq = 0;
 function onOwnClip(buf, peak, sec) {
@@ -210,7 +268,7 @@ function ev(e, extra = {}) { const m = { t: 'ev', e, ...extra }; net?.send(m); o
 /* ===== 게임 시작 ===== */
 function beginGame(m) {
   started = true; ended = false; startAt = performance.now();
-  setOverlay('lobby', false);
+  setOverlay('lobby', false); menuEnd();
   if (isTouch) { $('touch').style.display = 'block'; $('rot').classList.add('live'); }
   const ids = m.ids; ids.forEach((id, i) => {
     if (id === me.id) { me.color = COLORS[i]; me.idx = i; return; }
@@ -893,8 +951,7 @@ function loop(now) {
     applyWorld(dt, now);
     if (H && net && now - lastSendW > 100) { lastSendW = now; net.send({ t: 'w', w: W }); }
   } else {
-    // 대기실 뒤 배경: 천천히 도는 광장
-    const a = now / 9000; camera.position.set(80 + Math.sin(a) * 9, 2.2, 100 + Math.cos(a) * 9); camera.lookAt(80, 1.8, 100);
+    menuTick(dt, now);
   }
   if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; renderer.render(scene, camera); window.__forceRender = false; }
   if (TEST) setTimeout(() => loop(performance.now()), 60); else requestAnimationFrame(loop);
@@ -906,4 +963,4 @@ SR.onText = (text, key) => {
   d.heard = text; d.sign?.draw(); net?.send({ t: 'heard', d: key, x: text.slice(0, 30) });
   if (W && !W.doors[key]?.perm && phraseMatch(text, d.kind === 'sesame' ? '열려라 참깨' : d.phrase, d.kind === 'sesame')) { req('door', { id: key }); tagRecent(d.kind === 'sesame' ? '열려라 참깨' : d.phrase); srStop(); }
 };
-window.__vt = { me, players, get W() { return W; }, world, AU, get H() { return H; } };
+window.__vt = { MENU, me, players, get W() { return W; }, world, AU, get H() { return H; } };

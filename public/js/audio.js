@@ -229,3 +229,55 @@ export function blip(freq = 880, len = 0.12, vol = 0.2) {
   const o = AU.ctx.createOscillator(); o.frequency.value = freq; const g = AU.ctx.createGain(); const t = AU.ctx.currentTime;
   g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.001, t + len); o.connect(g); g.connect(AU.sfx); o.start(t); o.stop(t + len);
 }
+
+/* ===== 메인 화면 음악: 태엽이 풀려 가는 오르골 + 공장 웅웅거림 ===== */
+let MM = null;
+export function startMenuMusic() {
+  ensureCtx(); if (MM) return;
+  const c = AU.ctx, out = c.createGain(); out.gain.value = 0; out.gain.linearRampToValueAtTime(0.9, c.currentTime + 2.5); out.connect(AU.master);
+  // 웅웅거리는 형광등·기계 소리
+  const hum = c.createOscillator(); hum.type = 'sawtooth'; hum.frequency.value = 55;
+  const hum2 = c.createOscillator(); hum2.type = 'sine'; hum2.frequency.value = 110.6;
+  const hlp = c.createBiquadFilter(); hlp.type = 'lowpass'; hlp.frequency.value = 180;
+  const hg = c.createGain(); hg.gain.value = 0.05; hum.connect(hlp); hum2.connect(hlp); hlp.connect(hg); hg.connect(out); hum.start(); hum2.start();
+  const n = c.createBufferSource(); n.buffer = noise(); n.loop = true; const nb = c.createBiquadFilter(); nb.type = 'bandpass'; nb.frequency.value = 400; nb.Q.value = 0.6; const ng = c.createGain(); ng.gain.value = 0.035; n.connect(nb); nb.connect(ng); ng.connect(out); n.start();
+  // 오르골: 직접 만든 자장가 선율. 반복할수록 느려지고 음이 처짐
+  const mel = [72, 76, 79, 76, 77, 74, 71, 74, 72, 76, 79, 84, 83, 79, 77, 74, 76, 72, null, null];
+  const verb = c.createConvolver(); { const L = c.sampleRate * 2.4, b = c.createBuffer(2, L, c.sampleRate); for (let ch = 0; ch < 2; ch++) { const d = b.getChannelData(ch); for (let i = 0; i < L; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / L, 3); } verb.buffer = b; }
+  const wet = c.createGain(); wet.gain.value = 0.55; verb.connect(wet); wet.connect(out);
+  const dry = c.createGain(); dry.gain.value = 0.5; dry.connect(out);
+  let t = c.currentTime + 0.6, i = 0, loopN = 0;
+  const tick = () => {
+    if (!MM) return;
+    while (t < c.currentTime + 1.2) {
+      const note = mel[i % mel.length];
+      const drag = 1 + loopN * 0.04 + (i % mel.length) * 0.006;
+      if (note != null) {
+        const sour = Math.random() < 0.08 ? (Math.random() < 0.5 ? -0.6 : 0.5) : 0;
+        const f = 440 * Math.pow(2, (note - 69 - loopN * 0.06 + sour) / 12);
+        for (const [mul, vol] of [[1, 0.16], [2.01, 0.05], [3.98, 0.02]]) {
+          const o = c.createOscillator(); o.type = 'sine'; o.frequency.value = f * mul;
+          const g = c.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(vol, t + 0.006); g.gain.exponentialRampToValueAtTime(0.0008, t + 1.6);
+          o.connect(g); g.connect(dry); g.connect(verb); o.start(t); o.stop(t + 1.7);
+        }
+      }
+      t += 0.42 * drag; i++;
+      if (i % mel.length === 0) { loopN = (loopN + 1) % 6; t += 1.5; }
+    }
+    MM.timer = setTimeout(tick, 250);
+  };
+  MM = { out, nodes: [hum, hum2, n], timer: 0 }; tick();
+}
+export function stopMenuMusic() {
+  if (!MM) return; const c = AU.ctx, m = MM; MM = null; clearTimeout(m.timer);
+  m.out.gain.cancelScheduledValues(c.currentTime); m.out.gain.setValueAtTime(m.out.gain.value, c.currentTime); m.out.gain.linearRampToValueAtTime(0, c.currentTime + 1.2);
+  setTimeout(() => { for (const n of m.nodes) try { n.stop(); } catch {} m.out.disconnect(); }, 1400);
+}
+// 전기 지지직
+export function zap(vol = 0.25) {
+  if (!AU.ctx) return; const c = AU.ctx;
+  const n = c.createBufferSource(); n.buffer = noise(); const hp = c.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 1800;
+  const g = c.createGain(); const t = c.currentTime; g.gain.setValueAtTime(0, t);
+  for (let k = 0; k < 5; k++) { g.gain.setValueAtTime(vol * Math.random(), t + k * 0.04); g.gain.setValueAtTime(0, t + k * 0.04 + 0.02); }
+  n.connect(hp); hp.connect(g); g.connect(AU.sfx); n.start(t); n.stop(t + 0.3);
+}

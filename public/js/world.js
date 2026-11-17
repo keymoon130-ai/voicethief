@@ -29,53 +29,112 @@ function rust(g, w, h, n) {
     g.fillStyle = grd; g.fillRect(x, 0, 2 + Math.random() * 7, len);
   }
 }
-function wallTex(tint, mural) {
-  return canvasTex(512, 256, (g, w, h) => {
-    g.fillStyle = '#cfc6b4'; g.fillRect(0, 0, w, h);
-    g.fillStyle = tint; g.fillRect(0, h * 0.6, w, h * 0.4);
-    g.globalAlpha = 0.55; g.fillStyle = '#fff'; g.fillRect(0, h * 0.58, w, 5); g.globalAlpha = 1;
-    // 줄무늬 띠
-    g.fillStyle = 'rgba(255,255,255,0.18)'; for (let x = -20; x < w; x += 40) { g.beginPath(); g.moveTo(x, h * 0.6); g.lineTo(x + 20, h * 0.6); g.lineTo(x + 40, h); g.lineTo(x + 20, h); g.fill(); }
-    if (mural) {
-      // 바랜 토토 벽화
-      const cx = w * 0.5, cy = h * 0.34, r = h * 0.2;
-      g.globalAlpha = 0.5;
-      g.fillStyle = '#8fd9bd'; g.beginPath(); g.arc(cx, cy, r, 0, 7); g.fill();
-      g.beginPath(); g.arc(cx - r * 0.8, cy - r * 0.8, r * 0.35, 0, 7); g.arc(cx + r * 0.8, cy - r * 0.8, r * 0.35, 0, 7); g.fill();
-      g.fillStyle = '#222'; g.beginPath(); g.arc(cx - r * 0.35, cy - r * 0.1, r * 0.13, 0, 7); g.arc(cx + r * 0.35, cy - r * 0.1, r * 0.13, 0, 7); g.fill();
-      g.strokeStyle = '#2f7f66'; g.lineWidth = 5; g.beginPath(); g.arc(cx, cy + r * 0.1, r * 0.4, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke();
-      g.fillStyle = '#d24d6b'; g.font = '700 26px "Noto Sans KR",sans-serif'; g.textAlign = 'center'; g.fillText('따라쟁이 토토랑 놀자!', cx, h * 0.62 - 12);
-      g.globalAlpha = 1;
-      // 긁힌 자국
-      g.strokeStyle = 'rgba(40,30,20,0.5)'; g.lineWidth = 2;
-      for (let i = 0; i < 6; i++) { const x = cx - r + Math.random() * r * 2, y = cy - r + Math.random() * r; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 30 + Math.random() * 30, y + 15 + Math.random() * 30); g.stroke(); }
-    }
-    rust(g, w, h, 8); grime(g, w, h, 500);
+// 바랜 벽화 (투명 배경 위에 그려서 벽에 덧붙임)
+function muralTex() {
+  return canvasTex(1024, 512, (g, w, h) => {
+    g.globalAlpha = 0.72;
+    // 무지개 아치
+    ['#e2574c', '#ef9d3a', '#f2d24b', '#68c08a', '#4f8fd0', '#8b6cc8'].forEach((c, i) => { g.strokeStyle = c; g.lineWidth = 26; g.beginPath(); g.arc(w / 2, h * 0.92, h * 0.8 - i * 26, Math.PI, 0); g.stroke(); });
+    totoFace(g, w / 2, h * 0.5, h * 0.22, false);
+    g.fillStyle = '#d24d6b'; g.font = '900 54px "Noto Sans KR",sans-serif'; g.textAlign = 'center'; g.fillText('따라쟁이 토토랑 놀자!', w / 2, h * 0.92);
+    g.globalAlpha = 1;
+    // 바래고 긁힌 자국 (지워 내기)
+    g.globalCompositeOperation = 'destination-out';
+    for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(0,0,0,${0.15 + Math.random() * 0.5})`; const r = 4 + Math.random() * 26; g.beginPath(); g.arc(Math.random() * w, Math.random() * h, r, 0, 7); g.fill(); }
+    g.strokeStyle = 'rgba(0,0,0,0.9)'; g.lineWidth = 4;
+    for (let i = 0; i < 9; i++) { const x = w * 0.35 + Math.random() * w * 0.3, y = h * 0.25 + Math.random() * h * 0.3; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 40 + Math.random() * 50, y + 30 + Math.random() * 50); g.stroke(); }
+    g.globalCompositeOperation = 'source-over';
+    rust(g, w, h, 6); grime(g, w, h, 300);
   });
 }
-const floorTex = canvasTex(256, 256, (g, w, h) => {
-  g.fillStyle = '#34322f'; g.fillRect(0, 0, w, h);
-  g.fillStyle = '#3d3a36'; g.fillRect(0, 0, 128, 128); g.fillRect(128, 128, 128, 128);
-  g.strokeStyle = '#24221f'; g.lineWidth = 3; for (const [x, y] of [[0, 0], [128, 0], [0, 128], [128, 128]]) g.strokeRect(x, y, 128, 128);
-  grime(g, w, h, 300);
-});
-floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
+// 텍스처 묶음 (색 / 노멀 / 거칠기). tools/make_textures.py 로 생성
+const TL = new THREE.TextureLoader(), TEXC = new Map();
+const MAXANI = 4;
+function tx(file, srgb) {
+  if (TEXC.has(file)) return TEXC.get(file);
+  const t = TL.load('./tex/' + file + '.jpg'); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = MAXANI;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  TEXC.set(file, t); return t;
+}
+const MATC = new Map();
+// set: 'concrete' 같은 이름. col/nrm 이 다른 벽 세트는 [색, 공용] 으로
+export function pbr(set, opt = {}) {
+  const key = set + JSON.stringify(opt);
+  if (MATC.has(key)) return MATC.get(key);
+  const colName = opt.col || set, shared = opt.shared || set;
+  const m = new THREE.MeshStandardMaterial({
+    map: tx(colName + '_col', true), normalMap: tx(shared + '_nrm'), roughnessMap: tx(shared + '_rgh'),
+    roughness: 1, metalness: opt.metal || 0, color: opt.color || '#ffffff'
+  });
+  m.normalScale.set(opt.ns || 1, opt.ns || 1);
+  MATC.set(key, m); return m;
+}
+// 상자 UV를 실제 크기(미터)에 맞춤: su·sv 미터마다 텍스처 한 장
+export function uvBox(geo, w, h, d, su, sv = su) {
+  const uv = geo.attributes.uv, dims = [[d, h], [d, h], [w, d], [w, d], [w, h], [w, h]];
+  for (let f = 0; f < 6; f++) for (let k = 0; k < 4; k++) { const i = f * 4 + k; uv.setXY(i, uv.getX(i) * dims[f][0] / su, uv.getY(i) * dims[f][1] / sv); }
+  uv.needsUpdate = true; return geo;
+}
+function uvScale(geo, su, sv) { const uv = geo.attributes.uv; for (let i = 0; i < uv.count; i++) uv.setXY(i, uv.getX(i) * su, uv.getY(i) * sv); uv.needsUpdate = true; return geo; }
+
+// 구역별 재질
+const WALLCOL = { '#5d8fc9': 'blue', '#d96fa0': 'pink', '#e0b13e': 'yellow', '#5fb58a': 'mint', '#9c7ad6': 'purple', '#5f9e6e': 'mint', '#d0843d': 'yellow', '#4f8fb0': 'blue', '#c45f5f': 'red', '#8a7fc0': 'purple', '#4f6b70': 'gray', '#5c6470': 'gray', '#2f9e94': 'mint', '#9e3a32': 'red' };
+function zoneOf(r, tint) {
+  const painted = { wall: pbr('wall', { col: 'wall_' + (WALLCOL[tint] || 'gray') }), su: 7.2, sv: WALL_H };
+  if (/사장실|녹음실|사무실/.test(r.name)) return { floor: pbr('carpet'), fs: 3, wall: pbr('wall', { col: 'wallpaper' }), su: 7.2, sv: WALL_H };
+  if (/소각로/.test(r.name)) return { floor: pbr('concrete', { color: '#8a7a70' }), fs: 4, wall: pbr('brick'), su: 3.6, sv: WALL_H };
+  if (/생산라인|발전실/.test(r.name)) return { floor: pbr('concrete'), fs: 4, wall: pbr(/발전/.test(r.name) ? 'metal_yellow' : 'metal', { metal: 0.35 }), su: 3.6, sv: WALL_H };
+  if (/포장 창고|하역장/.test(r.name)) return { floor: pbr('concrete'), fs: 4, wall: pbr('metal', { metal: 0.3, color: '#b9a890' }), su: 3.6, sv: WALL_H };
+  if (r.type === 'corridor') return { floor: pbr('concrete'), fs: 4, ...painted, wall: pbr('wall', { col: 'wall_gray' }) };
+  return { floor: pbr('tiles'), fs: 4, ...painted };
+}
+
+// 벽 장식: 포스터·표어 (캔버스), 바닥 얼룩
+function totoFace(g, cx, cy, r, scary) {
+  g.fillStyle = '#86d2b4'; g.beginPath(); g.arc(cx - r * 0.75, cy - r * 0.85, r * 0.32, 0, 7); g.arc(cx + r * 0.75, cy - r * 0.85, r * 0.32, 0, 7); g.fill();
+  g.beginPath(); g.ellipse(cx, cy, r, r * 0.95, 0, 0, 7); g.fill();
+  g.fillStyle = '#f3efe2'; g.beginPath(); g.ellipse(cx, cy + r * 0.25, r * 0.62, r * 0.5, 0, 0, 7); g.fill();
+  g.fillStyle = '#141414';
+  if (scary) { g.beginPath(); g.ellipse(cx - r * 0.36, cy - r * 0.18, r * 0.1, r * 0.2, 0, 0, 7); g.ellipse(cx + r * 0.36, cy - r * 0.08, r * 0.12, r * 0.12, 0, 0, 7); g.fill(); g.beginPath(); g.ellipse(cx, cy + r * 0.35, r * 0.48, r * 0.26, 0, 0, 7); g.fill(); g.fillStyle = '#efe9d6'; for (let i = -4; i <= 4; i++) g.fillRect(cx + i * r * 0.1 - 2, cy + r * 0.12, r * 0.06, r * 0.1); }
+  else { g.beginPath(); g.arc(cx - r * 0.36, cy - r * 0.15, r * 0.13, 0, 7); g.arc(cx + r * 0.36, cy - r * 0.15, r * 0.13, 0, 7); g.fill(); g.strokeStyle = '#2b1a1a'; g.lineWidth = r * 0.08; g.beginPath(); g.arc(cx, cy + r * 0.12, r * 0.35, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); g.fillStyle = '#e88aa6'; g.beginPath(); g.arc(cx - r * 0.62, cy + r * 0.15, r * 0.1, 0, 7); g.arc(cx + r * 0.62, cy + r * 0.15, r * 0.1, 0, 7); g.fill(); }
+}
+function age(g, w, h, k = 1) {
+  const grd = g.createRadialGradient(w / 2, h / 2, Math.min(w, h) * 0.2, w / 2, h / 2, Math.max(w, h) * 0.75);
+  grd.addColorStop(0, 'rgba(60,40,15,0)'); grd.addColorStop(1, `rgba(60,40,15,${0.55 * k})`); g.fillStyle = grd; g.fillRect(0, 0, w, h);
+  grime(g, w, h, 140 * k); rust(g, w, h, 3 * k);
+  g.fillStyle = 'rgba(0,0,0,0)'; g.globalCompositeOperation = 'destination-out';
+  for (let i = 0; i < 4 * k; i++) { g.beginPath(); const x = Math.random() < 0.5 ? 0 : w, y = Math.random() * h; g.moveTo(x, y); for (let j = 0; j < 6; j++) g.lineTo(x + (x ? -1 : 1) * Math.random() * 40, y + (Math.random() - 0.5) * 60); g.fill(); }
+  g.globalCompositeOperation = 'source-over';
+}
+const POSTERS = [
+  [0.75, 1.05, (g, w, h) => { g.fillStyle = '#f2d75c'; g.fillRect(0, 0, w, h); g.fillStyle = '#e04f6f'; g.fillRect(0, h * 0.78, w, h * 0.22); totoFace(g, w / 2, h * 0.42, w * 0.3, false); g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '900 34px "Noto Sans KR",sans-serif'; g.fillText('따라쟁이 토토', w / 2, h * 0.87); g.font = '700 20px "Noto Sans KR",sans-serif'; g.fillText('말하면 따라해요!', w / 2, h * 0.95); g.fillStyle = '#e04f6f'; g.font = '900 28px "Noto Sans KR",sans-serif'; g.fillText('NEW!', w * 0.8, h * 0.1); }],
+  [1.2, 0.6, (g, w, h) => { g.fillStyle = '#1b1b1b'; g.fillRect(0, 0, w, h); for (let x = -h; x < w; x += 40) { g.fillStyle = '#e8b923'; g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 20, 0); g.lineTo(x + 20 + h * 0.2, h * 0.2); g.lineTo(x + h * 0.2, h * 0.2); g.fill(); } g.fillStyle = '#e8b923'; g.fillRect(0, h * 0.22, w, h * 0.78); g.fillStyle = '#151515'; g.textAlign = 'center'; g.font = '900 46px "Noto Sans KR",sans-serif'; g.fillText('안전제일', w / 2, h * 0.55); g.font = '700 22px "Noto Sans KR",sans-serif'; g.fillText('작업 중 큰 소리를 내지 마시오', w / 2, h * 0.82); }],
+  [0.75, 1.05, (g, w, h) => { g.fillStyle = '#d7e8ef'; g.fillRect(0, 0, w, h); g.fillStyle = '#3a6ea5'; g.textAlign = 'center'; g.font = '900 26px "Noto Sans KR",sans-serif'; g.fillText('이달의 우수 사원', w / 2, h * 0.1); g.fillStyle = '#9aa7ad'; g.fillRect(w * 0.2, h * 0.16, w * 0.6, h * 0.5); g.fillStyle = '#5b6468'; g.beginPath(); g.arc(w / 2, h * 0.35, w * 0.13, 0, 7); g.fill(); g.fillRect(w * 0.3, h * 0.48, w * 0.4, h * 0.18); g.strokeStyle = '#8a1d1d'; g.lineWidth = 9; g.beginPath(); g.moveTo(w * 0.22, h * 0.2); g.lineTo(w * 0.78, h * 0.62); g.moveTo(w * 0.78, h * 0.2); g.lineTo(w * 0.22, h * 0.62); g.stroke(); g.fillStyle = '#2b2b2b'; g.font = '700 22px "Noto Sans KR",sans-serif'; g.fillText('녹음실 박○○ 주임', w / 2, h * 0.76); g.font = '400 17px "Noto Sans KR",sans-serif'; g.fillText('"토토가 제 목소리를', w / 2, h * 0.85); g.fillText('저보다 잘 따라해요"', w / 2, h * 0.91); }],
+  [0.75, 1.05, (g, w, h) => { g.fillStyle = '#efe7d2'; g.fillRect(0, 0, w, h); totoFace(g, w / 2, h * 0.4, w * 0.3, true); g.strokeStyle = 'rgba(140,10,10,0.85)'; g.lineWidth = 7; g.lineCap = 'round'; for (let i = 0; i < 2; i++) { const x = w * (0.36 + i * 0.28); g.beginPath(); g.moveTo(x - 22, h * 0.32); g.lineTo(x + 22, h * 0.46); g.moveTo(x + 22, h * 0.32); g.lineTo(x - 22, h * 0.46); g.stroke(); } g.fillStyle = 'rgba(140,10,10,0.9)'; g.textAlign = 'center'; g.font = '900 36px "Noto Sans KR",sans-serif'; g.save(); g.translate(w / 2, h * 0.84); g.rotate(-0.08); g.fillText('따라하지 마', 0, 0); g.restore(); }],
+  [1.0, 0.7, (g, w, h) => { g.fillStyle = '#f4f1e8'; g.fillRect(0, 0, w, h); g.fillStyle = '#c0392b'; g.fillRect(0, 0, w, h * 0.24); g.fillStyle = '#fff'; g.textAlign = 'center'; g.font = '900 30px "Noto Sans KR",sans-serif'; g.fillText('공 지', w / 2, h * 0.17); g.fillStyle = '#222'; g.font = '700 21px "Noto Sans KR",sans-serif'; ['녹음 시제품이 작업자 목소리를', '흉내 내는 사례가 있습니다.', '동료가 부르면 먼저 확인하세요.'].forEach((t, i) => g.fillText(t, w / 2, h * (0.42 + i * 0.16))); }],
+  [1.4, 0.55, (g, w, h) => { g.fillStyle = '#2f7d6d'; g.fillRect(0, 0, w, h); g.fillStyle = '#fff6d8'; g.textAlign = 'center'; g.font = '900 38px "Noto Sans KR",sans-serif'; g.fillText('웃으면서 일해요!', w / 2, h * 0.5); g.font = '700 20px "Noto Sans KR",sans-serif'; g.fillText('따라쟁이 토이즈 · 행복한 일터', w / 2, h * 0.82); }]
+];
+const POSTER_MATS = POSTERS.map(([pw, ph, draw]) => { const t = canvasTex(Math.round(pw * 320), Math.round(ph * 320), (g, w, h) => { draw(g, w, h); age(g, w, h); }); return { pw, ph, m: new THREE.MeshStandardMaterial({ map: t, roughness: 0.85, transparent: true, alphaTest: 0.5, polygonOffset: true, polygonOffsetFactor: -2 }) }; });
+const STAIN = (() => { const t = canvasTex(256, 256, (g, w, h) => { for (let i = 0; i < 18; i++) { const x = w / 2 + (Math.random() - 0.5) * w * 0.5, y = h / 2 + (Math.random() - 0.5) * h * 0.5, r = 20 + Math.random() * 70; const grd = g.createRadialGradient(x, y, 0, x, y, r); grd.addColorStop(0, 'rgba(18,12,6,0.5)'); grd.addColorStop(1, 'rgba(18,12,6,0)'); g.fillStyle = grd; g.fillRect(0, 0, w, h); } }); return new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, roughness: 0.3, polygonOffset: true, polygonOffsetFactor: -3 }); })();
+const DRIP = (() => { const t = canvasTex(128, 256, (g, w, h) => { for (let i = 0; i < 9; i++) { const x = Math.random() * w, L = h * (0.3 + Math.random() * 0.7), ww = 3 + Math.random() * 8; const grd = g.createLinearGradient(0, 0, 0, L); grd.addColorStop(0, 'rgba(70,32,12,0.75)'); grd.addColorStop(1, 'rgba(70,32,12,0)'); g.fillStyle = grd; g.fillRect(x, 0, ww, L); } }); return new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); })();
 
 export function buildWorld(scene) {
   const colliders = [], solids = [], doors = new Map(), props = new Map(), lights = [], rooms = LAYOUT.rooms;
   const addBox = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); scene.add(m); return m; };
   const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
-  const ceilMat = new THREE.MeshLambertMaterial({ color: '#141416' });
+  const ceilMat = pbr('ceiling', { ns: 0.35, color: '#8a8580' });
+  const nearThing = (x, z, r) => LAYOUT.objects.some(o => Math.hypot(o.x - x, o.y - z) < r) || LAYOUT.doors.some(d => Math.hypot(d.x - x, d.y - z) < r + d.len / 2);
   const pick = (arr, i) => arr[i % arr.length];
   let n = 0;
   for (const r of rooms) {
     const tint = pick(PALETTE[r.type] || PALETTE.factory, n++);
-    const fm = new THREE.MeshLambertMaterial({ map: floorTex.clone() });
-    fm.map.repeat.set(r.w / 2, r.h / 2); fm.map.needsUpdate = true;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h), fm); floor.rotation.x = -Math.PI / 2; floor.position.set(r.x + r.w / 2, 0, r.y + r.h / 2); scene.add(floor);
-    const ceil = new THREE.Mesh(new THREE.PlaneGeometry(r.w, r.h), ceilMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(r.x + r.w / 2, WALL_H, r.y + r.h / 2); scene.add(ceil);
-    const plain = new THREE.MeshLambertMaterial({ map: wallTex(tint, false) });
-    const mural = (r.type === 'intro' || r.name === '중앙 홀' || r.name === '로비') ? new THREE.MeshLambertMaterial({ map: wallTex(tint, true) }) : plain;
+    const Z = zoneOf(r, tint);
+    const floor = new THREE.Mesh(uvScale(new THREE.PlaneGeometry(r.w, r.h), r.w / Z.fs, r.h / Z.fs), Z.floor); floor.rotation.x = -Math.PI / 2; floor.position.set(r.x + r.w / 2, 0, r.y + r.h / 2); scene.add(floor);
+    const ceil = new THREE.Mesh(uvScale(new THREE.PlaneGeometry(r.w, r.h), r.w / 5, r.h / 5), ceilMat); ceil.rotation.x = Math.PI / 2; ceil.position.set(r.x + r.w / 2, WALL_H, r.y + r.h / 2); scene.add(ceil);
+    const mural = (r.type === 'intro' || r.name === '중앙 홀' || r.name === '로비') ? new THREE.MeshStandardMaterial({ map: muralTex(), transparent: true, depthWrite: false, roughness: 0.8, polygonOffset: true, polygonOffsetFactor: -2 }) : null;
+    let muralDone = false;
+    // 바닥 얼룩
+    for (let i = 0, k = Math.round(r.w * r.h / 70) + 1; i < k; i++) { const s = 1.5 + Math.random() * 3; const m = new THREE.Mesh(new THREE.PlaneGeometry(s, s), STAIN); m.rotation.set(-Math.PI / 2, 0, Math.random() * 6); m.position.set(r.x + 1 + Math.random() * (r.w - 2), 0.004, r.y + 1 + Math.random() * (r.h - 2)); scene.add(m); }
     const edges = [
       { o: 'h', c: r.y, a: r.x, b: r.x + r.w, in: 1 }, { o: 'h', c: r.y + r.h, a: r.x, b: r.x + r.w, in: -1 },
       { o: 'v', c: r.x, a: r.y, b: r.y + r.h, in: 1 }, { o: 'v', c: r.x + r.w, a: r.y, b: r.y + r.h, in: -1 }
@@ -84,9 +143,29 @@ export function buildWorld(scene) {
       const holes = LAYOUT.doors.filter(d => d.o === e.o && Math.abs((e.o === 'h' ? d.y : d.x) - e.c) < 0.01 && (e.o === 'h' ? d.x : d.y) >= e.a && (e.o === 'h' ? d.x : d.y) <= e.b)
         .map(d => { const c = e.o === 'h' ? d.x : d.y; return [c - d.len / 2, c + d.len / 2]; });
       for (const [s, t] of subtract(e.a, e.b, holes)) {
-        const len = t - s, mid = (s + t) / 2, cc = e.c + e.in * T / 2, mat = len > 9 ? mural : plain;
-        if (e.o === 'h') { addBox(len, WALL_H, T, mat, mid, WALL_H / 2, cc); colliders.push({ x1: s, x2: t, z1: cc - T / 2, z2: cc + T / 2 }); }
-        else { addBox(T, WALL_H, len, mat, cc, WALL_H / 2, mid); colliders.push({ x1: cc - T / 2, x2: cc + T / 2, z1: s, z2: t }); }
+        const len = t - s, mid = (s + t) / 2, cc = e.c + e.in * T / 2;
+        const W = e.o === 'h' ? len : T, D = e.o === 'h' ? T : len;
+        const wm = new THREE.Mesh(uvBox(new THREE.BoxGeometry(W, WALL_H, D), W, WALL_H, D, Z.su, Z.sv), Z.wall);
+        if (e.o === 'h') { wm.position.set(mid, WALL_H / 2, cc); colliders.push({ x1: s, x2: t, z1: cc - T / 2, z2: cc + T / 2 }); }
+        else { wm.position.set(cc, WALL_H / 2, mid); colliders.push({ x1: cc - T / 2, x2: cc + T / 2, z1: s, z2: t }); }
+        scene.add(wm);
+        // 벽 장식: 안쪽 면에 붙이기
+        const face = (along, y, pw, ph, mat) => {
+          const m = new THREE.Mesh(new THREE.PlaneGeometry(pw, ph), mat), off = cc + e.in * (T / 2 + 0.006);
+          if (e.o === 'h') { m.position.set(along, y, off); m.rotation.y = e.in > 0 ? 0 : Math.PI; }
+          else { m.position.set(off, y, along); m.rotation.y = e.in > 0 ? Math.PI / 2 : -Math.PI / 2; }
+          scene.add(m); return m;
+        };
+        if (mural && !muralDone && len > 9) { muralDone = true; face(mid, WALL_H * 0.55, 6, 3, mural); }
+        else if (len > 4) {
+          for (let a = s + 1.5; a < t - 1.5; a += 4 + Math.random() * 5) {
+            const px = e.o === 'h' ? a : cc, pz = e.o === 'h' ? cc : a;
+            if (nearThing(px, pz, 1.8) || Math.random() < 0.45) continue;
+            const P = POSTER_MATS[(Math.random() * POSTER_MATS.length) | 0], sc = 1 + Math.random() * 0.3;
+            const p = face(a, 1.75 + Math.random() * 0.2, P.pw * sc, P.ph * sc, P.m); p.rotation.z = (Math.random() - 0.5) * 0.06;
+          }
+          if (Z.su === 3.6 || r.type === 'corridor') for (let a = s + 1; a < t - 1; a += 3 + Math.random() * 6) if (Math.random() < 0.5) face(a, WALL_H - 1.1, 0.8, 2.2, DRIP);
+        }
       }
     }
   }
@@ -94,10 +173,10 @@ export function buildWorld(scene) {
   // 문
   for (const d of LAYOUT.doors) {
     const col = DOOR_COLOR[d.kind] || DOOR_COLOR.normal;
-    const mat = new THREE.MeshLambertMaterial({ color: col, emissive: col, emissiveIntensity: 0.05 });
+    const mat = pbr(d.kind === 'normal' ? 'metal' : 'metal_yellow', { color: col, metal: 0.4 });
     const w = d.o === 'h' ? d.len : T * 1.6, dd = d.o === 'h' ? T * 1.6 : d.len;
-    const mesh = addBox(w, WALL_H, dd, mat, d.x, WALL_H / 2, d.y);
-    if (d.kind !== 'normal') for (let i = 0; i < 10; i++) { const s = new THREE.Mesh(new THREE.BoxGeometry(w * 1.02, 0.035, dd * 1.02), new THREE.MeshLambertMaterial({ color: '#000', transparent: true, opacity: 0.3 })); s.position.y = -WALL_H / 2 + 0.33 * (i + 1); mesh.add(s); }
+    const mesh = new THREE.Mesh(uvBox(new THREE.BoxGeometry(w, WALL_H, dd), w, WALL_H, dd, 3.6), mat); mesh.position.set(d.x, WALL_H / 2, d.y); scene.add(mesh);
+    if (d.kind !== 'normal') { const sm = new THREE.MeshStandardMaterial({ color: '#16130f', roughness: 0.6, metalness: 0.5 }); for (let i = 0; i < 10; i++) { const s = new THREE.Mesh(new THREE.BoxGeometry(w * 1.02, 0.035, dd * 1.02), sm); s.position.y = -WALL_H / 2 + 0.33 * (i + 1); mesh.add(s); } }
     const door = { ...d, mesh, amt: 0, open: false, p: 0, heard: '', sign: null };
     if (d.kind !== 'normal') door.sign = makeSign(scene, door);
     doors.set(d.id, door);
@@ -199,13 +278,13 @@ export function buildWorld(scene) {
     }
   }
   parts.count = pi; heads.count = hi; scene.add(parts, heads);
-  const boxMat = new THREE.MeshLambertMaterial({ color: '#9c7a4c' });
+  const boxMat = pbr('cardboard');
   for (const name of ['포장 창고', '하역장', '로비', '소각로 · 토토 둥지']) {
     const r = rooms.find(q => q.name === name);
     for (let i = 0; i < (name === '포장 창고' ? 10 : 4); i++) {
       const s = 0.6 + Math.random() * 0.6, bx = r.x + 1.5 + Math.random() * (r.w - 3), bz = r.y + 1.5 + Math.random() * (r.h - 3);
       if (LAYOUT.objects.some(o => Math.hypot(o.x - bx, o.y - bz) < 2.2) || LAYOUT.doors.some(d => Math.hypot(d.x - bx, d.y - bz) < 3)) continue;
-      const m = new THREE.Mesh(new THREE.BoxGeometry(s, s, s), boxMat); m.position.set(bx, s / 2, bz); m.rotation.y = Math.random(); scene.add(m); solid(bx, bz, s * 1.1, s * 1.1);
+      const m = new THREE.Mesh(uvBox(new THREE.BoxGeometry(s, s, s), s, s, s, s * 1.6), boxMat); m.position.set(bx, s / 2, bz); m.rotation.y = Math.random(); scene.add(m); solid(bx, bz, s * 1.1, s * 1.1);
     }
   }
   const puddle = new THREE.MeshPhongMaterial({ color: '#0b0d10', shininess: 120, specular: '#556' });

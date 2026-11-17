@@ -387,7 +387,7 @@ export function buildToto({ creepy = false } = {}) {
   } else {
     head.rotation.z = 0.04;
   }
-  root.add(head);
+  root.add(head); root.userData.head = head; root.userData.headRot = head.rotation.clone();
   if (creepy) root.rotation.x = 0.09;
   root.traverse(o => { if (o.isMesh) { o.castShadow = true; } });
   return root;
