@@ -386,9 +386,9 @@ function hostTick(dt) {
   const totoActive = ['roam', 'hunt', 'stalk', 'drag', 'cut'].includes(W.toto.m);
   for (const d of world.doors.values()) {
     const s = W.doors[d.id];
-    const near = r => act.some(p => dist(p, d) < r) || (totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6);
+    const near = r => act.some(p => Math.hypot(p.x - d.x, p.z - d.y) < r) || (totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6);
     if (d.kind === 'normal') s.o = (d.lockUntil === 'hunt' && !W.tut.done) ? 0 : (near(2.7) ? 1 : 0);
-    else if (d.kind === 'locked') s.o = (act.some(p => W.equip[p.id]?.c && dist(p, d) < 2.8) || (totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6)) ? 1 : 0;
+    else if (d.kind === 'locked') s.o = (act.some(p => W.equip[p.id]?.c && Math.hypot(p.x - d.x, p.z - d.y) < 2.8) || (totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6)) ? 1 : 0;
     else if (d.kind === 'lever') s.o = W.tut.lev ? 1 : 0;
     else if (d.kind === 'shutter') s.o = 0;
     else if (d.kind === 'voice' || d.kind === 'sesame') { const tn = totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6; s.o = (s.perm || tn) ? 1 : 0; }
@@ -397,7 +397,7 @@ function hostTick(dt) {
       if (s.hold > 0) { s.hold -= dt; s.p = 1; if (s.hold <= 0 && !d.practice) s.p = 0.999; }
       else if (s.p >= 1 && (d.practice || d.kind === 'exit')) s.p = 1;
       else {
-        const shouting = armed && all.some(p => !W.boxed[p.id] && p.sh && dist(p, d) < 11);
+        const shouting = armed && all.some(p => !W.boxed[p.id] && p.sh && Math.hypot(p.x - d.x, p.z - d.y) < 11);
         if (shouting) { H.shoutT[d.id] = 0.4; s.p = Math.min(1, s.p + dt * 0.3); if (s.p >= 1) { s.hold = d.kind === 'shout' && !d.practice ? 6 : 0; if (d.kind === 'exit') ev('msg', { x: '셔터가 올라갔어요! 빨리 나가요!' }); } }
         else if ((H.shoutT[d.id] || 0) > 0) H.shoutT[d.id] -= dt;
         else s.p = Math.max(0, s.p - dt * 0.12);
