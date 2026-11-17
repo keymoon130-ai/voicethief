@@ -6,6 +6,8 @@ import { LAYOUT, TUTORIAL_HINTS } from './layout.js';
 import { buildToto } from './toto.js';
 import { AU, ensureCtx, initMic, encodeClip, decodeClip, playBuf, setListener, makeRemoteVoice, setPos, calibrate, shoutNeed, SR, srStart, srStop, phraseMatch, startAmbience, creak, musicBox, step, rumble, siren, blip, startMenuMusic, stopMenuMusic, zap } from './audio.js';
 import { Net } from './net.js';
+import { makeViewmodel } from './viewmodel.js';
+import { makeFlashlight, makeFuse, rb } from './props.js';
 
 const $ = id => document.getElementById(id);
 const COLORS = ['#f2b134', '#5fb3e6', '#e66f9a', '#7fd17a', '#b892f0', '#f08a4b'];
@@ -22,19 +24,25 @@ renderer.setPixelRatio(Math.min(devicePixelRatio, isTouch ? 1 : 1.5));
 renderer.setSize(innerWidth, innerHeight);
 renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.3;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = isTouch ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color('#030304');
 scene.fog = new THREE.FogExp2('#030304', 0.045);
 const camera = new THREE.PerspectiveCamera(72, innerWidth / innerHeight, 0.05, 120);
 camera.rotation.order = 'YXZ'; scene.add(camera);
 scene.add(new THREE.HemisphereLight('#b8c8d0', '#1a120c', 0.22));
-addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); });
+const vm = makeViewmodel(); vm.cam.aspect = innerWidth / innerHeight; vm.cam.updateProjectionMatrix();
+addEventListener('resize', () => { renderer.setSize(innerWidth, innerHeight); camera.aspect = vm.cam.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); vm.cam.updateProjectionMatrix(); });
 
 const world = buildWorld(scene);
 const flash = new THREE.SpotLight('#fff1d6', 0, 26, 0.42, 0.45, 1.4);
 flash.position.set(0.15, -0.12, 0);
 const flashT = new THREE.Object3D(); flashT.position.set(0, -0.04, -1);
 camera.add(flash, flashT); flash.target = flashT;
+flash.castShadow = true; flash.shadow.mapSize.set(isTouch ? 512 : 1024, isTouch ? 512 : 1024); flash.shadow.camera.near = 0.15; flash.shadow.camera.far = 26; flash.shadow.bias = -0.0004; flash.shadow.normalBias = 0.03;
+// 그림자: 손전등 + 광장 주 조명 (휴대폰은 손전등만)
+scene.traverse(o => { if (o.isMesh || o.isInstancedMesh) { const tr = o.material?.transparent; o.receiveShadow = !tr; if (!tr && !(o.geometry?.type === 'PlaneGeometry')) o.castShadow = true; } });
+if (!isTouch) { const key = world.lights.find(l => l.roomName === '토토 광장'); if (key) { key.l.castShadow = true; key.l.shadow.mapSize.set(512, 512); key.l.shadow.bias = -0.001; key.l.shadow.camera.near = 0.3; key.l.shadow.camera.far = 22; } }
 
 /* ===== 토토 ===== */
 const totoCute = buildToto({ creepy: false }), totoCreepy = buildToto({ creepy: true });
@@ -171,6 +179,7 @@ function onTrack(id, stream) {
 document.body.classList.add('in-menu');
 const MENU = { on: true, mx: 0, my: 0, hx: 0, hy: 0, next: performance.now() + 5000, fl: null, creepyUntil: 0, sound: false };
 const menuLight = new THREE.SpotLight('#ffe2b8', 60, 18, 0.5, 0.6, 1.3);
+menuLight.castShadow = true; menuLight.shadow.mapSize.set(isTouch ? 512 : 1024, isTouch ? 512 : 1024); menuLight.shadow.bias = -0.0005; menuLight.shadow.camera.near = 0.3; menuLight.shadow.camera.far = 14;
 menuLight.position.set(80.6, WALL_H - 0.1, 103.2); menuLight.target.position.set(80, 1.6, 100); scene.add(menuLight, menuLight.target);
 addEventListener('pointermove', e => { MENU.mx = e.clientX / innerWidth * 2 - 1; MENU.my = e.clientY / innerHeight * 2 - 1; });
 function menuSound() { if (MENU.sound || !MENU.on) return; MENU.sound = true; ensureCtx(); startMenuMusic(); $('mmSound').classList.add('hide'); }
@@ -271,7 +280,7 @@ function beginGame(m) {
   setOverlay('lobby', false); menuEnd();
   if (isTouch) { $('touch').style.display = 'block'; $('rot').classList.add('live'); }
   const ids = m.ids; ids.forEach((id, i) => {
-    if (id === me.id) { me.color = COLORS[i]; me.idx = i; return; }
+    if (id === me.id) { me.color = COLORS[i]; me.idx = i; vm.setSleeve(COLORS[i]); return; }
     const p = players.get(id) || addPlayer(id, m.names[id]); p.name = m.names[id]; p.color = COLORS[i]; p.idx = i; makeAvatar(p);
   });
   const myI = ids.indexOf(me.id);
@@ -300,19 +309,60 @@ if (saved && saved.code) { try { sessionStorage.removeItem('vt-rejoin'); } catch
 /* ===== 아바타 ===== */
 function makeAvatar(p) {
   const g = new THREE.Group();
-  const m = new THREE.MeshLambertMaterial({ color: p.color });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.24, 0.8, 4, 10), m); body.position.y = 0.95; g.add(body);
-  const head = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), new THREE.MeshLambertMaterial({ color: '#e8d2b8' })); head.position.y = 1.62; g.add(head);
-  const cap = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), m); cap.position.y = 1.66; g.add(cap);
+  const S = (c, r = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
+  const suit = S(p.color, 0.75), shirt = S('#d9d4c8'), pants = S('#2c3138'), glove = S('#3a3e44', 0.9), skin = S('#e3c3a4', 0.7), boot = S('#1a1a1c', 0.6);
+  const rig = new THREE.Group(); g.add(rig);
+  const cap = (r, l, m) => new THREE.Mesh(new THREE.CapsuleGeometry(r, l, 4, 10), m);
+  // 다리 (엉덩이에서 회전)
+  const legs = [-1, 1].map(sx => { const hip = new THREE.Group(); hip.position.set(sx * 0.11, 0.86, 0); const l = cap(0.085, 0.58, pants); l.position.y = -0.38; hip.add(l); const bt = new THREE.Mesh(rbox(0.13, 0.09, 0.24), boot); bt.position.set(0, -0.8, -0.04); hip.add(bt); rig.add(hip); return hip; });
+  // 몸통: 작업복 멜빵 바지 + 셔츠
+  const torso = new THREE.Mesh(rbox(0.42, 0.56, 0.26, 0.09), shirt); torso.position.y = 1.16; rig.add(torso);
+  const bib = new THREE.Mesh(rbox(0.44, 0.42, 0.28, 0.08), suit); bib.position.y = 1.0; rig.add(bib);
+  for (const sx of [-1, 1]) { const st = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.32, 0.285), suit); st.position.set(sx * 0.12, 1.3, 0); rig.add(st); }
+  const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.06), new THREE.MeshBasicMaterial({ color: '#f1ead8' })); badge.position.set(-0.1, 1.28, -0.146); badge.rotation.y = Math.PI; rig.add(badge);
+  // 팔 (어깨에서 회전)
+  const arms = [-1, 1].map(sx => { const sh = new THREE.Group(); sh.position.set(sx * 0.27, 1.38, 0); const a = cap(0.065, 0.42, shirt); a.position.y = -0.27; sh.add(a); const h = new THREE.Mesh(new THREE.SphereGeometry(0.07, 12, 10), glove); h.position.y = -0.56; sh.add(h); rig.add(sh); return sh; });
+  const torch = makeFlashlight(); torch.scale.setScalar(1.6); torch.position.set(0, -0.6, -0.08); torch.rotation.x = Math.PI / 2; arms[1].add(torch);
+  // 머리: 안전모, 눈, 말하면 움직이는 입
+  const head = new THREE.Group(); head.position.y = 1.62; rig.add(head);
+  head.add(new THREE.Mesh(new THREE.SphereGeometry(0.15, 18, 14), skin));
+  const hat = new THREE.Group(); hat.add(new THREE.Mesh(new THREE.SphereGeometry(0.165, 18, 10, 0, Math.PI * 2, 0, Math.PI / 2), S(p.color, 0.4)));
+  const brim = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.2, 0.02, 20), S(p.color, 0.4)); brim.position.set(0, 0.0, -0.03); hat.add(brim);
+  const lampH = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.03, 10), S('#ddd', 0.3)); lampH.rotation.x = Math.PI / 2; lampH.position.set(0, 0.08, -0.16); hat.add(lampH);
+  hat.position.y = 0.03; head.add(hat);
+  const eyeM = new THREE.MeshBasicMaterial({ color: '#111' });
+  for (const sx of [-1, 1]) { const e = new THREE.Mesh(new THREE.SphereGeometry(0.018, 8, 6), eyeM); e.position.set(sx * 0.055, 0.0, -0.138); head.add(e); }
+  const mouth = new THREE.Mesh(new THREE.SphereGeometry(0.03, 10, 6), new THREE.MeshBasicMaterial({ color: '#3a1414' })); mouth.position.set(0, -0.065, -0.135); mouth.scale.set(1.2, 0.2, 0.5); head.add(mouth);
+  // 손전등 빛줄기
   const cone = new THREE.Mesh(new THREE.ConeGeometry(1.4, 6, 18, 1, true), new THREE.MeshBasicMaterial({ color: '#fff6dd', transparent: true, opacity: 0.06, depthWrite: false, side: THREE.DoubleSide, blending: THREE.AdditiveBlending }));
-  cone.rotation.x = -Math.PI / 2; cone.position.set(0, 1.4, -3.1); cone.visible = false; g.add(cone);
-  const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1.15, 1), new THREE.MeshLambertMaterial({ color: '#a8804f' })); box.position.y = 0.58; box.visible = false; g.add(box);
-  const tape = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.1, 0.3), new THREE.MeshLambertMaterial({ color: '#d7c49a' })); tape.position.y = 1.16; box.add(tape); tape.position.set(0, 0.58, 0);
+  cone.rotation.x = -Math.PI / 2; cone.position.set(0, 1.3, -3.1); cone.visible = false; g.add(cone);
+  // 포장된 상자
+  const box = new THREE.Mesh(new THREE.BoxGeometry(1, 1.15, 1), S('#a8804f', 0.9)); box.position.y = 0.58; box.visible = false; g.add(box);
+  const tape = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.1, 0.3), S('#d7c49a', 0.4)); box.add(tape); tape.position.set(0, 0.58, 0);
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const cg = c.getContext('2d'); cg.font = '700 34px "Noto Sans KR",sans-serif'; cg.textAlign = 'center'; cg.fillStyle = '#000a'; cg.fillRect(0, 8, 256, 48); cg.fillStyle = '#fff'; cg.fillText(p.name, 128, 45);
   const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: true, transparent: true })); tag.scale.set(1.2, 0.3, 1); tag.position.y = 2.15; g.add(tag);
-  const fuse = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 0.28, 10), new THREE.MeshBasicMaterial({ color: '#ffd166' })); fuse.position.set(0.3, 1.1, -0.2); fuse.visible = false; g.add(fuse);
-  g.userData = { body, head, cap, cone, box, tag, fuse };
+  const fuse = makeFuse(false); fuse.scale.setScalar(0.9); fuse.position.set(0, -0.6, -0.05); arms[0].add(fuse); fuse.visible = false;
+  rig.traverse(o => { if (o.isMesh) o.castShadow = true; });
+  g.userData = { body: rig, head, cap: hat, cone, box, tag, fuse, legs, arms, mouth, torch, walk: 0, lx: p.x, lz: p.z, talk: 0 };
   scene.add(g); p.avatar = g;
+}
+function rbox(w, h, d, r = 0.04) { return rb(w, h, d, r, 2); }
+function animAvatar(p, dt, now) {
+  const u = p.avatar.userData;
+  const sp = Math.hypot(p.x - u.lx, p.z - u.lz) / Math.max(dt, 1e-3); u.lx = p.x; u.lz = p.z;
+  const moving = Math.min(1, sp / 3);
+  u.walk += dt * (4 + sp * 2.2) * (moving > 0.05 ? 1 : 0);
+  const sw = Math.sin(u.walk) * 0.6 * moving;
+  u.legs[0].rotation.x = sw; u.legs[1].rotation.x = -sw;
+  const acting = !!p.hold;
+  u.arms[0].rotation.x = acting ? -1.3 + Math.sin(now / 60) * 0.05 : -sw * 0.8 + (u.fuse.visible ? -0.6 : 0);
+  u.arms[1].rotation.x = acting ? -1.3 + Math.sin(now / 70) * 0.05 : (u.torch.visible ? -0.9 + p.pitch * 0.8 : sw * 0.8);
+  u.arms[0].rotation.z = -0.08; u.arms[1].rotation.z = 0.08;
+  u.body.position.y = Math.abs(Math.cos(u.walk)) * 0.03 * moving;
+  u.head.rotation.x = -p.pitch * 0.7;
+  // 말할 때 입이 벌어짐: 누가 말하는지 보임
+  u.talk += (Math.min(1, (p.lv || 0) * 1.6) - u.talk) * Math.min(1, dt * 18);
+  u.mouth.scale.set(1.2 - u.talk * 0.2, 0.2 + u.talk * 1.1, 0.5);
 }
 
 /* ===== 입력 ===== */
@@ -698,6 +748,10 @@ $('btnAgain').onclick = () => { if (net?.isHost) net.send({ t: 'lobby' }); };
 /* ====================================================================
    내 화면 업데이트
    ==================================================================== */
+const HUD = { goal: '', goalT: 0, hint: null, hintT: 0, inv: '', invT: 0, micT: 0 };
+for (const id of ['inv', 'mic', 'stam', 'goal']) $(id).classList.add('fade');
+let anyTab = false;
+addEventListener('keydown', e => { if (e.code === 'KeyQ') anyTab = true; }); addEventListener('keyup', e => { if (e.code === 'KeyQ') anyTab = false; });
 let srShoutT = 0, recentRoom = null, stepAcc = 0, creakT = 15, flick = 0;
 function localTick(dt, now) {
   const boxed = W?.boxed?.[me.id];
@@ -711,6 +765,7 @@ function localTick(dt, now) {
   const wantRun = (keys.ShiftLeft || keys.ShiftRight || runTouch) && L > 0;
   const running = wantRun && me.stamina > 0.05;
   me.stamina = Math.max(0, Math.min(1, me.stamina + (running ? -dt / 4 : dt / 6)));
+  me.moving = L > 0; me.running = running;
   if (L > 0) {
     const sp = (running ? 5.0 : 3.0) * Math.min(1, L) * dt;
     mx /= Math.max(1, L); mz /= Math.max(1, L);
@@ -737,6 +792,7 @@ function localTick(dt, now) {
   // 손전등
   if (me.flash) { me.battery = Math.max(0, me.battery - dt / 150); if (me.battery <= 0) { me.flash = false; toast('배터리가 다 됐어요'); } }
   flash.intensity = me.flash && !boxed ? 55 * (0.55 + 0.45 * Math.min(1, me.battery * 3)) * (me.battery < 0.15 && Math.random() < 0.08 ? 0.2 : 1) : 0;
+  flash.shadow.autoUpdate = flash.intensity > 0;
 
   // 마이크 상태
   const need = shoutNeed();
@@ -770,7 +826,8 @@ function localTick(dt, now) {
       else if (c.k === 'lever') { prompt = useHeld ? '레버를 당기는 중 · 다른 레버도 동시에!' : 'E 꾹: 레버 당기기'; if (useHeld) me.hold = c.id; if (c.id.startsWith('lev')) { gaugeLab = '컨베이어'; gaugeVal = W.prog.prod || 0; } }
       else if (c.k === 'crane') { prompt = useHeld ? '크레인 조종 중 · 옆에서 누가 불러 주면 빨라요' : 'E 꾹: 인형뽑기 크레인 조종'; if (useHeld) me.hold = 'crane'; gaugeLab = '크레인'; gaugeVal = W.prog.craneShow || 0; }
       else if (c.k === 'shelf') { prompt = useHeld ? '선반으로 올라가는 중 · 누가 사다리를 잡아 줘야 해요' : 'E 꾹: 높은 선반 위 퓨즈 꺼내기'; if (useHeld) me.hold = 'shelf'; gaugeLab = '선반'; gaugeVal = W.prog.shelfShow || 0; }
-      else if (c.k === 'safe') { prompt = 'E: 금고 열기'; if (usePressed) { kp = ''; $('kpShow').textContent = '····'; $('kpErr').textContent = ''; setOverlay('keypad', true); } }
+      if (usePressed && /safe|pick|insert|vent/.test(c.k)) vm.poke();
+      if (c.k === 'safe') { prompt = 'E: 금고 열기'; if (usePressed) { kp = ''; $('kpShow').textContent = '····'; $('kpErr').textContent = ''; setOverlay('keypad', true); } }
       else if (c.k === 'pick') { prompt = 'E: 퓨즈 줍기'; if (usePressed) req('pick', { id: c.f }); }
       else if (c.k === 'insert') { prompt = 'E: 퓨즈 꽂기'; if (usePressed) req('insert'); }
       else if (c.k === 'vent') { prompt = 'E: 환풍구로 기어가기'; if (usePressed) crawl(c.id); }
@@ -806,10 +863,22 @@ function localTick(dt, now) {
 
   // 목표, 안내
   const g = goalText(room); $('goal').textContent = '목표 : ' + g;
+  // 화면 정리: 필요할 때만 보이기
+  if (g !== HUD.goal) { HUD.goal = g; HUD.goalT = now; }
+  $('goal').classList.toggle('dim', now - HUD.goalT > 6000);
   const hint = !W?.tut?.done && room && TUTORIAL_HINTS[room.name];
-  $('hint').style.display = hint ? 'block' : 'none'; if (hint) $('hint').innerHTML = hint;
+  if (hint !== HUD.hint) { HUD.hint = hint; HUD.hintT = now; }
+  const hintAge = (now - HUD.hintT) / 1000, showHint = !!hint && !cut && (hintAge < 12 || (hintAge > 40 && hintAge % 40 < 12));
+  $('hint').style.display = showHint ? 'block' : 'none'; if (showHint) $('hint').innerHTML = hint;
   const carrying = W && Object.keys(W.fuses).find(f => W.fuses[f] === me.id);
-  $('inv').innerHTML = [me.equip?.f ? `손전등 ${me.flash ? '켜짐' : '꺼짐'} · 배터리 ${Math.round(me.battery * 100)}%` : '손전등 없음', me.equip?.c ? '출입카드 있음' : '', carrying ? '퓨즈 들고 있음' : ''].filter(Boolean).join('<br>');
+  const invTxt = [me.equip?.f ? `손전등 ${me.flash ? '켜짐' : '꺼짐'} · 배터리 ${Math.round(me.battery * 100)}%` : '', me.equip?.c ? '출입카드 있음' : '', carrying ? '퓨즈 들고 있음' : ''].filter(Boolean).join('<br>');
+  const invKey = invTxt.replace(/\d+%/, '');
+  if (invKey !== HUD.inv) { HUD.inv = invKey; HUD.invT = now; }
+  $('inv').innerHTML = invTxt;
+  $('inv').classList.toggle('off', !(now - HUD.invT < 4000 || (me.flash && me.battery < 0.25) || anyTab));
+  if (AU.ok && AU.level > AU.speech * 0.8) HUD.micT = now;
+  $('mic').classList.toggle('off', !(AU.ok && (now - HUD.micT < 1500 || gaugeVal >= 0 || vd || anyTab)));
+  $('stam').classList.toggle('off', me.stamina > 0.985);
   const top = Math.max(AU.shout * 1.4, 1e-4);
   $('micFill').style.width = Math.min(100, AU.level / top * 100) + '%';
   $('micFill').style.background = me.sh ? '#f2b134' : me.sp ? '#3ddc97' : '#4a5560';
@@ -821,6 +890,11 @@ function localTick(dt, now) {
   // 분위기 소리
   creakT -= dt; if (creakT <= 0) { creakT = 12 + Math.random() * 16; const a = Math.random() * 6.28; creak({ x: me.x + Math.cos(a) * 10, z: me.z + Math.sin(a) * 10 }); }
   setListener(me.x, 1.65, me.z, me.yaw);
+
+  // 1인칭 손
+  { let lv = 0, best = 0, col = '#ffe8cc';
+    for (const l of world.lights) { const p = l.l.position, d2 = (p.x - me.x) ** 2 + (p.z - me.z) ** 2; if (d2 > 400) continue; const v = l.l.intensity / (1 + d2 * 0.5) / 30; lv += v; if (v > best) { best = v; col = '#' + l.l.color.getHexString(); } }
+    vm.update(dt, { yaw: me.yaw, pitch: me.pitch, moving: me.moving, running: me.running, hasFlash: !!me.equip?.f, flashOn: me.flash, battery: me.battery, hasCard: !!me.equip?.c, carrying: !!(W && Object.keys(W.fuses).find(f => W.fuses[f] === me.id)), acting: !!me.hold, boxed: !!boxed || !!W?.esc?.[me.id], light: Math.min(1, lv), lightColor: col }); }
 
   // 상태 보내기
   if (net && now - lastSendP > 80) { lastSendP = now; net.send({ t: 'p', x: +me.x.toFixed(2), z: +me.z.toFixed(2), yaw: +me.yaw.toFixed(3), pitch: +me.pitch.toFixed(3), fl: me.flash && !boxed ? 1 : 0, sh: me.sh, sp: me.sp, lv: me.lv, hold: me.hold }); }
@@ -880,7 +954,8 @@ function applyWorld(dt, now) {
     if (v === 'avail') pr.mesh.position.set(W.fpos[f][0], 0.6 + Math.sin(now / 300) * 0.08, W.fpos[f][1]);
     pr.mesh.rotation.y += dt * 2;
   }
-  const fb = world.props.get('fusebox'); fb.slots.forEach((s, i) => { s.material.emissive.set(i < W.inserted ? '#ffd166' : '#000'); });
+  const fb = world.props.get('fusebox'); fb.slots.forEach((s, i) => { const on = i < W.inserted; s.material.emissive.set(on ? '#ffb733' : '#000'); s.material.color.set(on ? '#fff0c0' : '#2a2a2a'); s.userData.lamp?.material.emissive.set(on ? '#3dff7a' : '#000'); });
+  { const cr = world.props.get('crane'); if (cr?.claw) { const working = me.hold === 'crane' || [...players.values()].some(p => p.hold === 'crane'); const k = W.prog.craneShow || 0; cr.claw.position.x += ((working ? Math.sin(now / 400) * 0.6 : 0.3) - cr.claw.position.x) * Math.min(1, dt * 3); cr.claw.position.y += ((working ? 2.6 - k * 1.2 : 2.6) - cr.claw.position.y) * Math.min(1, dt * 3); } }
   // 배터리
   for (const id of ['bat1', 'bat2', 'bat3', 'bat4']) { const pr = world.props.get(id); pr.mesh.visible = !W.bat[id]; pr.mesh.rotation.y += dt; }
   // 레버 모양
@@ -916,7 +991,8 @@ function applyWorld(dt, now) {
     p.avatar.rotation.y = p.yaw;
     ud.box.visible = !!bx; ud.body.visible = ud.head.visible = ud.cap.visible = !bx;
     ud.cone.visible = !!p.fl && !bx; ud.cone.rotation.x = -Math.PI / 2 + p.pitch;
-    ud.fuse.visible = Object.values(W.fuses).includes(p.id);
+    ud.fuse.visible = Object.values(W.fuses).includes(p.id); ud.torch.visible = !!W.equip?.[p.id]?.f;
+    if (!bx) animAvatar(p, dt, now);
     // 근거리 보이스챗
     if (p.voice) {
       const vx = bx ? bx.x : p.x, vz = bx ? bx.z : p.z;
@@ -953,7 +1029,7 @@ function loop(now) {
   } else {
     menuTick(dt, now);
   }
-  if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; renderer.render(scene, camera); window.__forceRender = false; }
+  if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; renderer.render(scene, camera); if (started) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vm.scene, vm.cam); renderer.autoClear = true; } window.__forceRender = false; }
   if (TEST) setTimeout(() => loop(performance.now()), 60); else requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -963,4 +1039,4 @@ SR.onText = (text, key) => {
   d.heard = text; d.sign?.draw(); net?.send({ t: 'heard', d: key, x: text.slice(0, 30) });
   if (W && !W.doors[key]?.perm && phraseMatch(text, d.kind === 'sesame' ? '열려라 참깨' : d.phrase, d.kind === 'sesame')) { req('door', { id: key }); tagRecent(d.kind === 'sesame' ? '열려라 참깨' : d.phrase); srStop(); }
 };
-window.__vt = { MENU, me, players, get W() { return W; }, world, AU, get H() { return H; } };
+window.__vt = { flash, renderer, MENU, me, players, get W() { return W; }, world, AU, get H() { return H; } };

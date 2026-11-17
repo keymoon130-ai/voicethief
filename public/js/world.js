@@ -1,6 +1,7 @@
 // 맵: 배치 그대로 3D 공장을 세우고, 충돌·시야·길찾기를 제공
 import * as THREE from 'three';
 import { LAYOUT } from './layout.js';
+import { makeLever, makeSafe, makeFusebox, makeFuse, makeBattery, makeCrane, makeLadder } from './props.js';
 
 export const WALL_H = 3.6, T = 0.2;
 export const DOOR_COLOR = { normal: '#b9b0a2', voice: '#a98bd8', sesame: '#e58ab8', lever: '#6f9fc4', shout: '#d9a03a', exit: '#3fbf86', shutter: '#7d8f99', locked: '#c45a4f' };
@@ -200,15 +201,10 @@ export function buildWorld(scene) {
     const P = { ...o, mesh: null };
     const x = o.x, z = o.y;
     if (o.kind === 'battery') {
-      const g = new THREE.Group();
-      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.32, 14), new THREE.MeshLambertMaterial({ color: '#9be15d', emissive: '#4f8a1c', emissiveIntensity: 1 })));
-      g.position.set(x, 0.45, z); scene.add(g); P.mesh = g;
+      const g = makeBattery(); g.position.set(x, 0.45, z); g.rotation.z = 0.3; scene.add(g); P.mesh = g;
+      const ped = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.3, 0.3, 12), dark); ped.position.set(x, 0.15, z); scene.add(ped);
     } else if (o.kind === 'lever') {
-      const g = new THREE.Group(); g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.3, 1.1, 0.3), gray), 0, 0.55, 0));
-      const pivot = new THREE.Group(); pivot.position.set(0, 1.05, 0);
-      pivot.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 8), new THREE.MeshLambertMaterial({ color: '#c94b3a' })), 0, 0.3, 0));
-      pivot.add(at(new THREE.Mesh(new THREE.SphereGeometry(0.07, 10, 8), dark), 0, 0.62, 0));
-      g.add(pivot); g.position.set(x, 0, z); scene.add(g); solid(x, z, 0.4, 0.4); P.mesh = g; P.pivot = pivot;
+      const { g, pivot } = makeLever(); g.position.set(x, 0, z); scene.add(g); solid(x, z, 0.5, 0.5); P.mesh = g; P.pivot = pivot;
     } else if (o.kind === 'packer') {
       const g = new THREE.Group();
       g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.6, 0.08, 1.6), new THREE.MeshLambertMaterial({ color: '#d9a03a', emissive: '#5a3d0a', emissiveIntensity: 0.4 })), 0, 0.04, 0));
@@ -218,35 +214,20 @@ export function buildWorld(scene) {
       scene.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.2, 1, 0.7), new THREE.MeshLambertMaterial({ color: '#4b6b66' })), x, 0.5, z)); solid(x, z, 1.2, 0.7);
       const dl = smallDoll(1); dl.position.set(x, 1, z); dl.rotation.y = 0; scene.add(dl); P.mesh = dl;
     } else if (o.kind === 'safe') {
-      const g = new THREE.Group(); g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.9, 1.1, 0.8), new THREE.MeshPhongMaterial({ color: '#3d4a52', shininess: 40 })), 0, 0.55, 0));
-      g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.06, 16), new THREE.MeshPhongMaterial({ color: '#c9b37a' })), 0, 0.7, 0.42).rotateX(Math.PI / 2));
-      g.position.set(x + 0.2, 0, z + 0.4); scene.add(g); solid(x + 0.2, z + 0.4, 0.9, 0.8); P.mesh = g;
+      const { g } = makeSafe(); g.position.set(x + 0.2, 0, z + 0.4); scene.add(g); solid(x + 0.2, z + 0.4, 0.9, 0.8); P.mesh = g;
     } else if (o.kind === 'note') {
       const c = document.createElement('canvas'); c.width = 256; c.height = 192; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace;
       const m = new THREE.Mesh(new THREE.PlaneGeometry(0.8, 0.6), new THREE.MeshLambertMaterial({ map: tex })); m.position.set(x, 1.6, z + T + 0.02); scene.add(m);
       P.draw = code => { const g = c.getContext('2d'); g.fillStyle = '#efe6c8'; g.fillRect(0, 0, 256, 192); g.fillStyle = '#7a1f1f'; g.font = '700 26px "Noto Sans KR",sans-serif'; g.fillText('사장님 금고 번호', 22, 50); g.fillStyle = '#222'; g.font = '700 64px monospace'; g.fillText(code || '????', 40, 140); grime(g, 256, 192, 60); tex.needsUpdate = true; };
       P.draw(''); P.mesh = m;
     } else if (o.kind === 'fuse') {
-      const g = new THREE.Group();
-      g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 0.35, 12), new THREE.MeshLambertMaterial({ color: '#ffd166', emissive: '#a07000', emissiveIntensity: 0.8 })));
-      const L = new THREE.PointLight('#ffd166', 1.5, 3, 2); g.add(L);
-      g.position.set(x, 0.9, z); g.visible = false; scene.add(g); P.mesh = g;
+      const g = makeFuse(); g.position.set(x, 0.9, z); g.visible = false; scene.add(g); P.mesh = g;
     } else if (o.kind === 'crane') {
-      const g = new THREE.Group();
-      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.9, 2.2), new THREE.MeshLambertMaterial({ color: '#d96fa0' })), 0, 0.45, 0));
-      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(2.1, 1.8, 2.1), new THREE.MeshPhongMaterial({ color: '#bfe6ff', transparent: true, opacity: 0.18, shininess: 90 })), 0, 1.8, 0));
-      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 2.2), new THREE.MeshLambertMaterial({ color: '#d96fa0' })), 0, 2.85, 0));
-      for (let i = 0; i < 9; i++) { const d = smallDoll(0.5); d.position.set(-0.7 + (i % 3) * 0.7, 0.9, -0.7 + Math.floor(i / 3) * 0.7); d.rotation.y = Math.random() * 6; g.add(d); }
-      g.position.set(x, 0, z); scene.add(g); solid(x, z, 2.2, 2.2); P.mesh = g;
+      const { g, claw } = makeCrane(smallDoll); g.position.set(x, 0, z); scene.add(g); solid(x, z, 2.2, 2.2); P.mesh = g; P.claw = claw;
     } else if (o.kind === 'ladder') {
-      const g = new THREE.Group(); for (const s of [-0.25, 0.25]) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.06, 3.2, 0.06), gray), s, 1.6, 0));
-      for (let i = 0; i < 9; i++) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.05), gray), 0, 0.3 + i * 0.33, 0));
-      const shelf = at(new THREE.Mesh(new THREE.BoxGeometry(3, 0.1, 1), dark), -2, 2.4, 1.5); g.add(shelf);
-      g.position.set(x, 0, z); g.rotation.z = 0.08; scene.add(g); P.mesh = g;
+      const { g } = makeLadder(); g.position.set(x, 0, z); scene.add(g); P.mesh = g;
     } else if (o.kind === 'fusebox') {
-      const g = new THREE.Group(); g.add(at(new THREE.Mesh(new THREE.BoxGeometry(1.4, 1.6, 0.4), new THREE.MeshPhongMaterial({ color: '#4a5560', shininess: 30 })), 0, 1.3, 0));
-      P.slots = []; for (let i = 0; i < 4; i++) { const s = at(new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.4, 0.05), new THREE.MeshLambertMaterial({ color: '#222', emissive: '#000' })), -0.45 + i * 0.3, 1.3, 0.22); g.add(s); P.slots.push(s); }
-      g.position.set(x, 0, z); scene.add(g); solid(x, z, 1.4, 0.5); P.mesh = g;
+      const { g, slots } = makeFusebox(); g.position.set(x, 0, z); scene.add(g); solid(x, z, 1.5, 0.5); P.mesh = g; P.slots = slots;
     } else if (o.kind === 'statue') {
       const g = new THREE.Group(); g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(1, 1.1, 0.6, 24), gray), 0, 0.3, 0));
       const d = smallDoll(2.4); d.position.y = 0.6; g.add(d); g.position.set(x, 0, z); scene.add(g); solid(x, z, 2, 2); P.mesh = g; P.head = d.head;
