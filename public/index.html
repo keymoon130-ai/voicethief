@@ -115,6 +115,16 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
 .hud.off{opacity:0!important}
 #goal.dim{opacity:.55}
 #rec{opacity:.6}
+@media (max-height:520px){
+  .mm-since{display:none}
+  .mm-title{font-size:34px;line-height:1}
+  .mm-title br{display:none}
+  .mm-brand{font-size:16px}
+  .mm-item{font-size:18px;padding:3px 0 3px 18px}
+  .mm-panel{gap:6px}
+  #lobby.room .mm-logo{display:none}
+  #lobby.room .mm-room,.mm-room{top:10px;bottom:10px;max-height:none}
+}
 .hide{display:none!important}
 #help table{border-collapse:collapse;font-size:14px}
 #help td{padding:5px 10px;border-bottom:1px solid var(--line)}
@@ -163,7 +173,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
   <header class="mm-logo">
     <div class="mm-brand"><span style="color:#e2574c">따</span><span style="color:#ef9d3a">라</span><span style="color:#e6c23f">쟁</span><span style="color:#68c08a">이</span><span class="mm-toys">TOYS</span></div>
     <div class="mm-since">EST. 1987 · 말하는 장난감 전문</div>
-    <h1 class="mm-title">VOICE<br>THIEF</h1>
+    <h1 class="mm-title">VOICE<br> THIEF</h1>
   </header>
 
   <nav class="mm-panel" id="stepJoin">

@@ -77,16 +77,18 @@ const nickIn = $('nick'), codeIn = $('codeIn');
 const saved = (() => { try { return JSON.parse(sessionStorage.getItem('vt-rejoin') || 'null'); } catch { return null; } })();
 try { nickIn.value = localStorage.getItem('vt-nick') || ''; } catch {}
 function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
+let joining = false;
 async function join(code) {
+  if (joining || net) return;
   const name = nickIn.value.trim();
   if (!name) { $('joinErr').textContent = '닉네임을 입력하세요.'; nickIn.focus(); return; }
   if (!/^[A-Z0-9]{4,6}$/.test(code)) { $('joinErr').textContent = '방 코드는 영문·숫자 4자리예요.'; codeIn.focus(); return; }
   try { localStorage.setItem('vt-nick', name); } catch {}
   ensureCtx();
   me.name = name;
-  net = new Net({ onMsg, onTrack, onPeerGone, onClose: () => { if (!ended) toast('서버 연결이 끊겼어요. 새로고침해 주세요', 6000); } });
+  net = new Net({ onMsg, onTrack, onPeerGone, onClose: () => { if (!ended && me.id) toast('서버 연결이 끊겼어요. 새로고침해 주세요', 6000); } });
   if (AU.stream) net.setStream(AU.stream);
-  $('joinErr').textContent = '연결 중…';
+  $('joinErr').textContent = '연결 중…'; joining = true;
   try {
     const w = await net.connect(code, name);
     me.id = w.id;
@@ -99,7 +101,7 @@ async function join(code) {
   } catch (e) {
     $('joinErr').textContent = e.message === 'full' ? '방이 꽉 찼어요 (최대 6명).' : e.message === 'started' ? '이미 게임이 시작된 방이에요.' : '서버에 연결하지 못했어요. 주소와 인터넷을 확인하세요.';
     net = null;
-  }
+  } finally { joining = false; }
 }
 $('btnCreate').onclick = () => join(newCode());
 $('btnJoin').onclick = () => join(codeIn.value.trim().toUpperCase());
@@ -667,7 +669,7 @@ function moveToward(dt, gx, gz, speed) {
   H.pathT -= dt;
   const far = !H.pathGoal || Math.hypot(H.pathGoal.x - gx, H.pathGoal.z - gz) > 1.5;
   if (!H.path || H.pathT <= 0 || far) {
-    if (world.clearLine(t.x, t.z, gx, gz, true)) H.path = [{ x: gx, z: gz }];
+    if (world.clearLine(t.x, t.z, gx, gz, true, true)) H.path = [{ x: gx, z: gz }];
     else H.path = world.findPath(t.x, t.z, gx, gz) || [{ x: gx, z: gz }];
     H.pathT = 0.8; H.pathGoal = { x: gx, z: gz };
   }
@@ -1009,6 +1011,7 @@ function applyWorld(dt, now) {
   // 조명 깜빡임
   flick += dt;
   for (const l of world.lights) {
+    if (l.fire) { l.l.intensity = l.base * (0.75 + Math.sin(now / 90) * 0.12 + Math.random() * 0.13); continue; }
     if (Math.random() < l.flicker * dt * 30) l.offT = 0.05 + Math.random() * 0.25;
     if (l.offT > 0) { l.offT -= dt; l.l.intensity = l.base * 0.08; l.lamp.material.color.setScalar(0.15); }
     else { l.l.intensity = l.base; l.lamp.material.color.set(l.l.color); }

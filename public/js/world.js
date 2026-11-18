@@ -121,6 +121,12 @@ const STAIN = (() => { const t = canvasTex(256, 256, (g, w, h) => { for (let i =
 const DRIP = (() => { const t = canvasTex(128, 256, (g, w, h) => { for (let i = 0; i < 9; i++) { const x = Math.random() * w, L = h * (0.3 + Math.random() * 0.7), ww = 3 + Math.random() * 8; const grd = g.createLinearGradient(0, 0, 0, L); grd.addColorStop(0, 'rgba(70,32,12,0.75)'); grd.addColorStop(1, 'rgba(70,32,12,0)'); g.fillStyle = grd; g.fillRect(x, 0, ww, L); } }); return new THREE.MeshStandardMaterial({ map: t, transparent: true, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2 }); })();
 
 export function buildWorld(scene) {
+  // 모든 사람의 공장이 똑같이 생기도록 고정된 난수 사용 (상자·기계 위치가 충돌 판정에 쓰임)
+  const sysRandom = Math.random; let seed = 20261118;
+  Math.random = () => { seed |= 0; seed = seed + 0x6D2B79F5 | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  try { return buildWorldInner(scene); } finally { Math.random = sysRandom; }
+}
+function buildWorldInner(scene) {
   const colliders = [], solids = [], doors = new Map(), props = new Map(), lights = [], rooms = LAYOUT.rooms;
   const addBox = (w, h, d, mat, x, y, z) => { const m = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); m.position.set(x, y, z); scene.add(m); return m; };
   const at = (m, x, y, z) => { m.position.set(x, y, z); return m; };
@@ -485,7 +491,7 @@ export function buildWorld(scene) {
     path.reverse();
     // 직선으로 갈 수 있는 점은 건너뛰기
     const out = []; let from = { x: sx, z: sz }, k = 0;
-    while (k < path.length) { let far = k; for (let q = path.length - 1; q > k; q--) if (clearLine(from.x, from.z, path[q].x, path[q].z, true)) { far = q; break; } out.push(path[far]); from = path[far]; k = far + 1; }
+    while (k < path.length) { let far = k; for (let q = path.length - 1; q > k; q--) if (clearLine(from.x, from.z, path[q].x, path[q].z, true, true)) { far = q; break; } out.push(path[far]); from = path[far]; k = far + 1; }
     return out;
   }
   function segHits(x1, z1, x2, z2, c) {
@@ -496,7 +502,8 @@ export function buildWorld(scene) {
     return true;
   }
   function closedDoorBoxes() { const out = []; for (const d of doors.values()) if (d.amt < 0.8) out.push(d.o === 'h' ? { x1: d.x - d.len / 2, x2: d.x + d.len / 2, z1: d.y - T, z2: d.y + T } : { x1: d.x - T, x2: d.x + T, z1: d.y - d.len / 2, z2: d.y + d.len / 2 }); return out; }
-  function clearLine(x1, z1, x2, z2, ignoreDoors) {
+  function clearLine(x1, z1, x2, z2, ignoreDoors, withSolids) {
+    if (withSolids) for (const c of solids) if (segHits(x1, z1, x2, z2, { x1: c.x1 - 0.45, x2: c.x2 + 0.45, z1: c.z1 - 0.45, z2: c.z2 + 0.45 })) return false;
     for (const c of colliders) if (segHits(x1, z1, x2, z2, { x1: c.x1 - 0.3, x2: c.x2 + 0.3, z1: c.z1 - 0.3, z2: c.z2 + 0.3 })) return false;
     if (!ignoreDoors) for (const c of closedDoorBoxes()) if (segHits(x1, z1, x2, z2, c)) return false;
     return true;
