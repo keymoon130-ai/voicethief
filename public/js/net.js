@@ -6,12 +6,12 @@ export class Net {
     this.h = handlers; this.ws = null; this.id = null; this.host = null;
     this.pcs = new Map(); this.pending = new Map(); this.localStream = null;
   }
-  connect(code, name) {
+  connect(code, name, pid) {
     return new Promise((resolve, reject) => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
       const ws = new WebSocket(`${proto}://${location.host}/ws?room=${encodeURIComponent(code)}`);
       this.ws = ws; let settled = false;
-      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name }));
+      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', name, pid }));
       ws.onmessage = ev => {
         let m; try { m = JSON.parse(ev.data); } catch { return; }
         if (m.t === 'deny') { settled = true; reject(new Error(m.why)); return; }

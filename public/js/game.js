@@ -67,7 +67,7 @@ const myClips = [];
 let toastT;
 function toast(msg, ms = 2400) { const t = $('toast'); t.textContent = msg; t.classList.add('show'); clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove('show'), ms); }
 function setOverlay(id, on) { $(id).classList.toggle('hide', !on); if (on) document.exitPointerLock?.(); }
-const anyOverlay = () => ['help', 'keypad', 'results', 'lobby'].some(id => !$(id).classList.contains('hide'));
+const anyOverlay = () => ['help', 'keypad', 'results', 'lobby', 'rejoin'].some(id => !$(id).classList.contains('hide'));
 // 캠코더 노이즈
 const grainC = $('grain'), grainG = grainC.getContext('2d'), grainImg = grainG.createImageData(160, 90);
 setInterval(() => { const d = grainImg.data; for (let i = 0; i < d.length; i += 4) { const v = Math.random() * 255; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255; } grainG.putImageData(grainImg, 0, 0); }, 90);
@@ -76,6 +76,33 @@ setInterval(() => { const d = grainImg.data; for (let i = 0; i < d.length; i += 
 const nickIn = $('nick'), codeIn = $('codeIn');
 const saved = (() => { try { return JSON.parse(sessionStorage.getItem('vt-rejoin') || 'null'); } catch { return null; } })();
 try { nickIn.value = localStorage.getItem('vt-nick') || ''; } catch {}
+/* ===== 재접속: 기기 고유값과 진행 중인 판 기억 ===== */
+const SESSION = (() => { try { const v = JSON.parse(localStorage.getItem('vt-session') || 'null'); return v && Date.now() - v.t < 30 * 60 * 1000 ? v : null; } catch { return null; } })();
+const PID = (() => { let v = null; try { v = sessionStorage.getItem('vt-pid') || SESSION?.pid || null; } catch {} if (!v) v = Math.random().toString(36).slice(2, 12) + Date.now().toString(36); try { sessionStorage.setItem('vt-pid', v); } catch {} return v; })();
+function saveSession() { try { localStorage.setItem('vt-session', JSON.stringify({ code: $('codeShow').textContent, pid: PID, name: me.name, t: Date.now(), bat: me.battery, cal: { floor: AU.floor, speech: AU.speech, shout: AU.shout } })); } catch {} }
+function clearSession() { try { localStorage.removeItem('vt-session'); } catch {} }
+setInterval(() => { if (started && !ended) saveSession(); }, 15000);
+let rejoining = false, rejoinTimer = 0;
+function rejoinAsk(title, text, onYes) {
+  $('rjTitle').textContent = title; $('rjText').textContent = text; $('rjErr').textContent = '';
+  $('rjYes').disabled = false; $('rjYes').onclick = onYes; $('rjNo').onclick = () => { clearSession(); setOverlay('rejoin', false); };
+  setOverlay('rejoin', true);
+}
+if (SESSION) {
+  fetch(`/room?code=${encodeURIComponent(SESSION.code)}&pid=${encodeURIComponent(PID)}`).then(r => r.json()).then(r => {
+    if (!r.member) { clearSession(); return; }
+    rejoinAsk('진행 중인 게임이 있습니다', `방 ${SESSION.code} · 재접속하시겠습니까?`, async () => {
+      $('rjYes').disabled = true; $('rjErr').textContent = '';
+      try { ensureCtx(); await initMic(); AU.onClip = onOwnClip; if (SESSION.cal) Object.assign(AU, SESSION.cal); } catch {}
+      $('rjText').textContent = '게임에 다시 들어가는 중…';
+      nickIn.value = SESSION.name || nickIn.value || '플레이어';
+      rejoining = true; me.battery = SESSION.bat ?? 0.6;
+      await join(SESSION.code);
+      if (!net) { rejoining = false; $('rjYes').disabled = false; $('rjErr').textContent = $('joinErr').textContent || '재접속하지 못했어요.'; return; }
+      rejoinTimer = setTimeout(() => { if (rejoining) { $('rjErr').textContent = '방장에게서 응답이 없어요. 새로고침해 보세요.'; $('rjYes').disabled = false; } }, 10000);
+    });
+  }).catch(() => {});
+}
 function newCode() { const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; let s = ''; for (let i = 0; i < 4; i++) s += A[Math.floor(Math.random() * A.length)]; return s; }
 let joining = false;
 async function join(code) {
@@ -86,15 +113,17 @@ async function join(code) {
   try { localStorage.setItem('vt-nick', name); } catch {}
   ensureCtx();
   me.name = name;
-  net = new Net({ onMsg, onTrack, onPeerGone, onClose: () => { if (!ended && me.id) toast('서버 연결이 끊겼어요. 새로고침해 주세요', 6000); } });
+  net = new Net({ onMsg, onTrack, onPeerGone, onClose: () => { if (ended || !me.id) return; if (started) { saveSession(); rejoinAsk('연결이 끊겼어요', '재접속하시겠습니까?', () => location.reload()); } else toast('서버 연결이 끊겼어요. 새로고침해 주세요', 6000); } });
   if (AU.stream) net.setStream(AU.stream);
   $('joinErr').textContent = '연결 중…'; joining = true;
   try {
-    const w = await net.connect(code, name);
+    const w = await net.connect(code, name, PID);
     me.id = w.id;
     players.clear();
     for (const p of w.peers) addPlayer(p.id, p.name, p.ready);
     $('joinErr').textContent = '';
+    $('codeShow').textContent = code;
+    if (w.started) return; // 진행 중인 판에 재접속: 방장이 보내 주는 resume 을 기다림
     $('stepJoin').classList.add('hide'); $('stepRoom').classList.remove('hide'); $('lobby').classList.add('room');
     $('codeShow').textContent = code;
     renderPlist();
@@ -163,7 +192,7 @@ function onPeerGone(id) {
   players.delete(id);
   if (!started) renderPlist(); else toast(p.name + ' 님이 나갔어요');
   if (started && net?.isHost && !H) becomeHost();
-  if (H && W) { delete W.boxed[id]; for (const f in W.fuses) if (W.fuses[f] === id) { W.fuses[f] = 'avail'; W.fpos[f] = [p.x, p.z]; } }
+  if (H && W) { H.lastPos[id] = { x: p.x, z: p.z }; delete W.boxed[id]; for (const f in W.fuses) if (W.fuses[f] === id) { W.fuses[f] = 'avail'; W.fpos[f] = [p.x, p.z]; } }
 }
 function onTrack(id, stream) {
   const p = players.get(id) || addPlayer(id, '?');
@@ -259,6 +288,14 @@ function getClip(owner, cid) { return clips.get(owner)?.get(cid) || null; }
 function onMsg(m) {
   switch (m.t) {
     case 'joined': addPlayer(m.id, m.name); if (!started) renderPlist(); break;
+    case 'rejoin': {
+      addPlayer(m.id, m.name);
+      if (m.old && clips.has(m.old)) clips.set(m.id, clips.get(m.old));
+      if (H && W && m.old && W.ids.includes(m.old)) { remapPlayer(m.old, m.id); net.sendTo(m.id, { t: 'resume', w: W, pos: H.lastPos[m.old] || null, el: performance.now() - startAt }); }
+      if (started) toast(m.name + ' 님이 다시 들어왔어요');
+      break;
+    }
+    case 'resume': if (rejoining) resumeGame(m); break;
     case 'ready': { if (m.id === me.id) break; const p = players.get(m.id); if (p) { p.ready = m.v; renderPlist(); } break; }
     case 'left': if (!started) renderPlist(); break;
     case 'start': beginGame(m); break;
@@ -272,6 +309,29 @@ function onMsg(m) {
     case 'heard': { const d = world.doors.get(m.d); if (d) { d.heard = m.x; d.sign?.draw(); } break; }
   }
   if (m.t === 'left' && started && net?.isHost && !H) becomeHost();
+}
+function remapPlayer(old, nw) {
+  W.ids = W.ids.map(x => x === old ? nw : x);
+  W.names[nw] = W.names[old];
+  if (W.equip[old]) W.equip[nw] = W.equip[old];
+  if (W.stats[old]) W.stats[nw] = W.stats[old];
+  for (const k of ['boxed', 'esc']) if (W[k][old] !== undefined) { W[k][nw] = W[k][old]; delete W[k][old]; }
+  for (const f in W.fuses) if (W.fuses[f] === old) W.fuses[f] = nw;
+  for (const k of ['rescue', 'packT']) if (H[k][old] !== undefined) { H[k][nw] = H[k][old]; delete H[k][old]; }
+}
+function resumeGame(m) {
+  rejoining = false; clearTimeout(rejoinTimer); setOverlay('rejoin', false);
+  if (!net.isHost) W = m.w;
+  started = true; ended = false; startAt = performance.now() - (m.el || 0);
+  setOverlay('lobby', false); menuEnd();
+  if (isTouch) { $('touch').style.display = 'block'; $('rot').classList.add('live'); }
+  const i = Math.max(0, W.ids.indexOf(me.id)); me.color = COLORS[i]; me.idx = i; vm.setSleeve(COLORS[i]);
+  if (m.pos) { me.x = m.pos.x; me.z = m.pos.z; } else if (W.phase === 'intro') { me.x = 79.5; me.z = 130; } else { me.x = 79; me.z = 97; }
+  [me.x, me.z] = world.resolve(me.x, me.z);
+  me.equip = W.equip[me.id] || { f: 0, c: 0 };
+  world.props.get('note').draw(W.code);
+  startAmbience(); saveSession();
+  toast('게임에 다시 들어왔어요', 3000);
 }
 function req(a, extra = {}) { const m = { t: 'req', a, ...extra }; if (H) hostReq(me.id, m); else net?.send(m); }
 function ev(e, extra = {}) { const m = { t: 'ev', e, ...extra }; net?.send(m); onEvent(m); }
@@ -292,7 +352,7 @@ function beginGame(m) {
   me.battery = 0.6;
   world.props.get('note').draw(m.code);
   if (net.isHost) { H = newHost(); W = initW(m); }
-  startAmbience();
+  startAmbience(); saveSession();
   showOpening(m.skip);
 }
 function showOpening(skip) {
@@ -303,6 +363,7 @@ function showOpening(skip) {
   setTimeout(() => { o.style.transition = 'opacity 1s'; o.style.opacity = '0'; setTimeout(() => { o.style.display = 'none'; o.style.opacity = '1'; toast('Tab: 조작법', 2600); }, 1000); }, 4200);
 }
 function backToLobby() {
+  clearSession();
   try { sessionStorage.setItem('vt-rejoin', JSON.stringify({ code: $('codeShow').textContent, cal: { floor: AU.floor, speech: AU.speech, shout: AU.shout } })); } catch {}
   location.reload();
 }
@@ -310,6 +371,7 @@ if (saved && saved.code) { try { sessionStorage.removeItem('vt-rejoin'); } catch
 
 /* ===== 아바타 ===== */
 function makeAvatar(p) {
+  if (p.avatar) return;
   const g = new THREE.Group();
   const S = (c, r = 0.8) => new THREE.MeshStandardMaterial({ color: c, roughness: r });
   const suit = S(p.color, 0.75), shirt = S('#d9d4c8'), pants = S('#2c3138'), glove = S('#3a3e44', 0.9), skin = S('#e3c3a4', 0.7), boot = S('#1a1a1c', 0.6);
@@ -416,8 +478,18 @@ addEventListener('keydown', e => { if ($('keypad').classList.contains('hide')) r
 /* ====================================================================
    호스트 판정
    ==================================================================== */
-function newHost() { return { path: null, pathT: 0, goal: null, target: null, mimicT: 12, flashAcc: 0, fallT: 0, flasher: null, grace: 0, lostT: 0, rescue: {}, statueSpoke: false, speech: false, dollT: 30, cutT: 0, packT: {}, shoutT: {}, tlevT: 0, doorT: {}, escOrder: 0 }; }
-function becomeHost() { H = newHost(); if (W) { toast('방장이 나가서 내가 방장이 됐어요'); } }
+function newHost() { return { path: null, pathT: 0, goal: null, target: null, mimicT: 12, flashAcc: 0, fallT: 0, flasher: null, grace: 0, lostT: 0, rescue: {}, dollT: 30, packT: {}, shoutT: {}, tlevT: 0, doorT: {}, escOrder: 0, lastPos: {} }; }
+function becomeHost() {
+  H = newHost();
+  if (W) {
+    // 이전 방장이 하던 진행을 W에서 이어받기
+    W.flags = W.flags || {};
+    H.escOrder = Math.max(0, ...Object.values(W.esc || {}));
+    for (const [bid, b] of Object.entries(W.boxed || {})) H.rescue[bid] = b.r || 0;
+    H.grace = 3;
+    toast('방장이 나가서 내가 방장이 됐어요');
+  }
+}
 function initW(m) {
   const doors = {}; for (const d of world.doors.values()) doors[d.id] = { o: 0, p: 0 };
   if (m.skip) for (const id of ['d2noq131', 'dfix002', 'd2noq129', 'd8su1188', 'd9yim190', 'dfix003', 'd2noq130', 'd2noq126']) { doors[id].o = 1; doors[id].p = 1; doors[id].perm = 1; }
@@ -425,7 +497,7 @@ function initW(m) {
   return {
     phase: m.skip ? 'hunt' : 'intro', skip: m.skip, code: m.code, names: m.names, ids: m.ids, equip: m.equip,
     doors, fuses: { F1: 'hidden', F2: 'hidden', F3: 'hidden', F4: 'hidden' }, fpos: { F1: [OBJ.F1.x, OBJ.F1.y], F2: [OBJ.F2.x, OBJ.F2.y], F3: [OBJ.F3.x, OBJ.F3.y], F4: [106, 41.5] },
-    inserted: 0, found: false, bat: {}, boxed: {}, esc: {}, stats, used: [], timer: 0,
+    inserted: 0, found: false, flags: {}, cutT: 0, bat: {}, boxed: {}, esc: {}, stats, used: [], timer: 0,
     tut: { done: !!m.skip, lev: !!m.skip }, prog: { crane: 0, shelf: 0, prod: 0 }, prodDone: false,
     toto: { x: STATUE.x, z: STATUE.z, y: 0, m: m.skip ? 'hidden' : 'statue', v: m.skip ? 'none' : 'statue', d: null }
   };
@@ -480,17 +552,17 @@ function hostTick(dt) {
   const all = allPlayers(), act = activeOf(all);
   // 진행: 컷씬 트리거
   if (W.phase === 'hunt' && act.some(p => p.x > 76 && p.x < 83 && p.z < 75 && p.z > 64)) {
-    W.phase = 'cutscene'; W.toto = { x: 57, z: 62.5, y: Math.PI / 2, m: 'cut', v: 'creepy', d: null }; H.cutT = 0;
+    W.phase = 'cutscene'; W.toto = { x: 57, z: 62.5, y: Math.PI / 2, m: 'cut', v: 'creepy', d: null }; W.cutT = 0;
     const c = pickClip(null); ev('cut', { o: c?.[0], c: c?.[1] });
   }
   // 수료식 짜깁기 축사
-  if (!H.speech && !W.tut.done && all.some(p => world.roomAt(p.x, p.z)?.name === '수료식장')) {
-    H.speech = true; const list = []; const used = new Set();
+  if (!W.flags.speech && !W.tut.done && all.some(p => world.roomAt(p.x, p.z)?.name === '수료식장')) {
+    W.flags.speech = true; const list = []; const used = new Set();
     for (let i = 0; i < 3; i++) { const c = pickClip(null, used); if (c) { list.push(c); used.add(c[1]); } }
     ev('speech', { list });
   }
   // 광장 토토 동상: 가까이 오면 누군가 한 말을 따라 함
-  if (!H.statueSpoke && W.toto.m === 'statue' && all.some(p => dist(p, STATUE) < 5.5)) { const c = pickClip(null); if (c) { H.statueSpoke = true; ev('mimic', { o: c[0], c: c[1], x: STATUE.x, z: STATUE.z, y: 2.6 }); } }
+  if (!W.flags.statue && W.toto.m === 'statue' && all.some(p => dist(p, STATUE) < 5.5)) { const c = pickClip(null); if (c) { W.flags.statue = true; ev('mimic', { o: c[0], c: c[1], x: STATUE.x, z: STATUE.z, y: 2.6 }); } }
 
   // 문
   const totoActive = ['roam', 'hunt', 'stalk', 'drag', 'cut'].includes(W.toto.m);
@@ -557,7 +629,7 @@ function hostTick(dt) {
     }
   }
   // 퓨즈 들고 있던 사람이 나가면 떨어뜨림
-  for (const f in W.fuses) { const v = W.fuses[f]; if (!['hidden', 'avail', 'in'].includes(v) && !all.some(p => p.id === v)) { W.fuses[f] = 'avail'; } }
+  for (const f in W.fuses) { const v = W.fuses[f]; if (!['hidden', 'avail', 'in'].includes(v) && !all.some(p => p.id === v)) { W.fuses[f] = 'avail'; const lp = H.lastPos[v]; if (lp) W.fpos[f] = [lp.x, lp.z]; } }
   W.prog.craneShow = W.prog.crane; W.prog.shelfShow = W.prog.shelf;
   for (const [bid] of Object.entries(W.boxed)) W.boxed[bid].r = H.rescue[bid] || 0;
 
@@ -598,8 +670,8 @@ function pickClip(listenerId, exclude = new Set()) {
 function totoTick(dt, all, act) {
   const t = W.toto, tier = W.phase === 'escape' ? 4 : W.inserted;
   if (t.m === 'cut') {
-    H.cutT += dt; t.x = 57 + (103 - 57) * Math.min(1, H.cutT / 8); t.y = Math.PI / 2;
-    if (H.cutT >= 8.5) { t.m = 'roam'; W.phase = 'main'; t.x = 103; H.grace = 15; H.path = null; }
+    W.cutT = (W.cutT || 0) + dt; t.x = 57 + (103 - 57) * Math.min(1, W.cutT / 8); t.y = Math.PI / 2;
+    if (W.cutT >= 8.5) { t.m = 'roam'; W.phase = 'main'; t.x = 103; H.grace = 15; H.path = null; }
     return;
   }
   if (!['roam', 'hunt', 'stalk', 'drag', 'fall'].includes(t.m)) return;
@@ -729,7 +801,7 @@ function onEvent(m) {
 
 /* ===== 결과 ===== */
 function showResults(r) {
-  ended = true; siren(false); srStop(); me.flash = false;
+  ended = true; siren(false); srStop(); me.flash = false; clearSession();
   setOverlay('results', true);
   const ok = r.escaped.length;
   $('resThumb').textContent = ok ? '🚪' : '📦';
@@ -984,7 +1056,7 @@ function applyWorld(dt, now) {
   // 컷씬 이후 방장이 아닌 사람도 phase 동기화
   // 다른 플레이어
   for (const p of players.values()) {
-    if (!p.avatar) continue;
+    if (!p.avatar) { const i = W.ids?.indexOf(p.id) ?? -1; if (i < 0) continue; p.name = W.names[p.id] || p.name; p.color = COLORS[i]; p.idx = i; makeAvatar(p); }
     p.x += (p.tx - p.x) * Math.min(1, dt * 10); p.z += (p.tz - p.z) * Math.min(1, dt * 10);
     const bx = W.boxed[p.id], esc = W.esc[p.id];
     const ud = p.avatar.userData;
