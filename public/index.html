@@ -65,6 +65,8 @@ button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline
 .plist{display:flex;flex-direction:column;gap:6px}
 .plist div{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px}
 .plist .dot{width:10px;height:10px;border-radius:50%;flex:none}
+.plist .mic{color:var(--ok);display:flex;opacity:0;transition:opacity .12s}
+.plist .mic.on{opacity:1}
 .plist .st{margin-left:auto;font-size:12px;color:var(--muted)}
 .plist .st.on{color:var(--ok)}
 .err{color:var(--bad);font-size:13px;min-height:18px}

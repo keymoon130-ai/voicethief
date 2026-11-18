@@ -166,6 +166,16 @@ $('btnCal').onclick = async () => {
   await calibrate(s => { $('calState').innerHTML = { quiet: '1. 잠깐 조용히…', talk: '2. 평소 목소리로 <b>"안녕하세요, 테스트 중입니다"</b>', done: '다 됐어요', weak: '말소리가 잘 안 잡혔어요. 다시 해 보세요' }[s]; });
   $('btnCal').disabled = false;
 };
+// 말하는 중 표시: 대기실에서는 이름 옆 마이크, 게임 중에는 머리 위 마이크
+let mySpk = false, mySpkT = 0;
+const speakingNow = () => AU.ok && AU.level > Math.max(AU.speech * 0.8, AU.floor * 2.5);
+setInterval(() => {
+  if (started) return;
+  const now = performance.now(); if (speakingNow()) mySpkT = now;
+  const v = now - mySpkT < 350;
+  if (v !== mySpk) { mySpk = v; net?.send({ t: 'spk', v: v ? 1 : 0 }); }
+  for (const row of $('plist').children) { const id = row.dataset.pid; const on = id === me.id ? mySpk : !!players.get(id)?.spk; row.querySelector('.mic')?.classList.toggle('on', on); }
+}, 80);
 setInterval(() => { if (!$('lobby').classList.contains('hide')) $('lobbyMeter').style.width = Math.min(100, AU.level / Math.max(0.05, AU.shout * 1.3) * 100) + '%'; }, 60);
 let ready = false;
 $('btnReady').onclick = () => { ready = !ready; net?.send({ t: 'ready', v: ready }); $('btnReady').textContent = ready ? '준비 취소' : '준비 완료'; const p = { ready }; me.ready = ready; renderPlist(); };
@@ -187,7 +197,8 @@ function renderPlist() {
   $('plist').innerHTML = '';
   rows.forEach((r, i) => {
     const d = document.createElement('div');
-    d.innerHTML = `<span class="dot" style="background:${COLORS[i % 6]}"></span><span></span><span class="st ${r.ready ? 'on' : ''}">${(net && r.id === net.host) ? '방장 · ' : ''}${r.ready ? '준비 완료' : '준비 중'}</span>`;
+    d.dataset.pid = r.id || '';
+    d.innerHTML = `<span class="dot" style="background:${COLORS[i % 6]}"></span><span></span><span class="mic"><svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><path d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg></span><span class="st ${r.ready ? 'on' : ''}">${(net && r.id === net.host) ? '방장 · ' : ''}${r.ready ? '준비 완료' : '준비 중'}</span>`;
     d.children[1].textContent = r.name; $('plist').append(d);
   });
   $('btnStart').classList.toggle('hide', !isHost); $('skipWrap').classList.toggle('hide', !isHost);
@@ -310,6 +321,7 @@ function onMsg(m) {
       break;
     }
     case 'resume': if (rejoining) resumeGame(m); break;
+    case 'spk': { const p = players.get(m.from); if (p) p.spk = !!m.v; break; }
     case 'ready': { if (m.id === me.id) break; const p = players.get(m.id); if (p) { p.ready = m.v; renderPlist(); } break; }
     case 'left': if (!started) renderPlist(); break;
     case 'start': beginGame(m); break;
@@ -419,11 +431,16 @@ function makeAvatar(p) {
   const tape = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.1, 0.3), S('#d7c49a', 0.4)); box.add(tape); tape.position.set(0, 0.58, 0);
   const c = document.createElement('canvas'); c.width = 256; c.height = 64; const cg = c.getContext('2d'); cg.font = '700 34px "Noto Sans KR",sans-serif'; cg.textAlign = 'center'; cg.fillStyle = '#000a'; cg.fillRect(0, 8, 256, 48); cg.fillStyle = '#fff'; cg.fillText(p.name, 128, 45);
   const tag = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), depthTest: true, transparent: true })); tag.scale.set(1.2, 0.3, 1); tag.position.y = 2.15; g.add(tag);
+  const mic = new THREE.Sprite(new THREE.SpriteMaterial({ map: MIC_TEX, transparent: true, opacity: 0 })); mic.scale.set(0.34, 0.34, 1); mic.position.y = 2.5; mic.renderOrder = 5; g.add(mic);
   const fuse = makeFuse(false); fuse.scale.setScalar(0.9); fuse.position.set(0, -0.6, -0.05); arms[0].add(fuse); fuse.visible = false;
   rig.traverse(o => { if (o.isMesh) o.castShadow = true; });
-  g.userData = { body: rig, head, cap: hat, cone, box, tag, fuse, legs, arms, mouth, torch, walk: 0, lx: p.x, lz: p.z, talk: 0 };
+  g.userData = { body: rig, head, cap: hat, cone, box, tag, mic, spkT: 0, fuse, legs, arms, mouth, torch, walk: 0, lx: p.x, lz: p.z, talk: 0 };
   scene.add(g); p.avatar = g;
 }
+const MIC_TEX = (() => { const c = document.createElement('canvas'); c.width = c.height = 128; const g = c.getContext('2d');
+  g.fillStyle = 'rgba(10,12,14,.75)'; g.beginPath(); g.arc(64, 64, 60, 0, 7); g.fill(); g.strokeStyle = '#3ddc97'; g.lineWidth = 6; g.stroke();
+  g.fillStyle = '#3ddc97'; g.beginPath(); g.roundRect(50, 26, 28, 46, 14); g.fill(); g.lineWidth = 7; g.beginPath(); g.arc(64, 60, 24, 0.15 * Math.PI, 0.85 * Math.PI); g.stroke(); g.fillRect(60, 84, 8, 14); g.fillRect(48, 96, 32, 7);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 function rbox(w, h, d, r = 0.04) { return rb(w, h, d, r, 2); }
 function animAvatar(p, dt, now) {
   const u = p.avatar.userData;
@@ -1103,6 +1120,7 @@ function applyWorld(dt, now) {
     ud.box.visible = !!bx; ud.body.visible = ud.head.visible = ud.cap.visible = !bx;
     ud.cone.visible = !!p.fl && !bx; ud.cone.rotation.x = -Math.PI / 2 + p.pitch;
     ud.fuse.visible = Object.values(W.fuses).includes(p.id); ud.torch.visible = !!W.equip?.[p.id]?.f;
+    if (p.sp) ud.spkT = now; const talking = now - ud.spkT < 350; ud.mic.material.opacity += ((talking ? 1 : 0) - ud.mic.material.opacity) * Math.min(1, dt * 14); ud.mic.position.y = bx ? 1.45 : 2.5; ud.mic.scale.setScalar(0.34 * (1 + (talking ? Math.sin(now / 90) * 0.06 : 0)));
     if (!bx) animAvatar(p, dt, now);
     // 근거리 보이스챗
     if (p.voice) {
