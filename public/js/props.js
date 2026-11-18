@@ -85,7 +85,7 @@ export function makeFusebox() {
 }
 
 /* 퓨즈: 유리관 안에 빛나는 필라멘트, 양쪽 금속 캡 */
-export function makeFuse(withLight = true) {
+export function makeFuse(withLight = false) {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 0.24, 14), new THREE.MeshStandardMaterial({ color: '#fff3c4', emissive: '#ffb733', emissiveIntensity: 1.6, transparent: true, opacity: 0.85, roughness: 0.1 })));
   for (const y of [-0.15, 0.15]) g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.068, 0.068, 0.07, 14), MAT.brass), 0, y, 0));

@@ -45,14 +45,24 @@ camera.add(flash, flashT); flash.target = flashT;
 flash.castShadow = true; flash.shadow.mapSize.set(isTouch ? 512 : 1024, isTouch ? 512 : 1024); flash.shadow.camera.near = 0.15; flash.shadow.camera.far = 26; flash.shadow.bias = -0.0004; flash.shadow.normalBias = 0.03;
 // 그림자: 손전등 + 광장 주 조명 (휴대폰은 손전등만)
 scene.traverse(o => { if (o.isMesh || o.isInstancedMesh) { const tr = o.material?.transparent; o.receiveShadow = !tr; if (!tr && !(o.geometry?.type === 'PlaneGeometry')) o.castShadow = true; } });
-if (!isTouch) { const key = world.lights.find(l => l.roomName === '토토 광장'); if (key) { key.l.castShadow = true; key.l.shadow.mapSize.set(512, 512); key.l.shadow.bias = -0.001; key.l.shadow.camera.near = 0.3; key.l.shadow.camera.far = 22; } }
+if (!isTouch) { const key = world.lights.find(l => l.roomName === '토토 광장' && l.l.isPointLight); if (key) { key.real = true; scene.add(key.l); key.l.castShadow = true; key.l.shadow.mapSize.set(512, 512); key.l.shadow.bias = -0.001; key.l.shadow.camera.near = 0.3; key.l.shadow.camera.far = 22; } }
+
+/* ===== 조명 풀: 공장 등은 30개 가까이지만, 실제로는 가까운 몇 개만 켜서 그림 (개수는 항상 같게 유지) ===== */
+const POOL_N = isTouch ? 6 : 10;
+const lightPool = Array.from({ length: POOL_N }, () => { const l = new THREE.PointLight('#fff', 0, 10, 1.5); scene.add(l); return l; });
+function updateLightPool() {
+  const cx = camera.position.x, cz = camera.position.z, cand = [];
+  for (const d of world.lights) { if (d.real || !d.l.isPointLight) continue; const p = d.l.position; cand.push([Math.hypot(p.x - cx, p.z - cz) - d.l.distance * 0.5, d]); }
+  cand.sort((a, b) => a[0] - b[0]);
+  for (let i = 0; i < POOL_N; i++) { const pl = lightPool[i], c = cand[i]; if (!c) { pl.intensity = 0; continue; } const L = c[1].l; pl.position.copy(L.position); pl.color.copy(L.color); pl.intensity = L.intensity; pl.distance = L.distance; pl.decay = L.decay; }
+}
 
 /* ===== 토토 ===== */
 const totoCute = buildToto({ creepy: false }), totoCreepy = buildToto({ creepy: true });
 totoCreepy.visible = false;
 const totoRig = new THREE.Group(); totoRig.add(totoCute, totoCreepy); scene.add(totoRig);
 totoRig.position.set(STATUE.x, 0, STATUE.z); totoRig.rotation.y = 0;
-const totoEyes = new THREE.PointLight('#8fd9bd', 0, 4, 2); totoEyes.position.set(0, 2.6, 0.6); totoRig.add(totoEyes);
+const totoEyes = new THREE.PointLight('#8fd9bd', 0, 4, 2); scene.add(totoEyes);
 const TV = { x: STATUE.x, z: STATUE.z, y: 0, stepAcc: 0, lastX: STATUE.x, lastZ: STATUE.z };
 
 /* ===== 상태 ===== */
@@ -257,7 +267,7 @@ function menuTick(dt, now) {
   MENU.wasCreepy = creepy;
 }
 function menuEnd() {
-  if (!MENU.on) return; MENU.on = false; stopMenuMusic(); document.body.classList.remove('in-menu'); scene.remove(menuLight, menuLight.target); menuLight.dispose();
+  if (!MENU.on) return; MENU.on = false; stopMenuMusic(); document.body.classList.remove('in-menu'); menuLight.intensity = 0; menuLight.shadow.autoUpdate = false; menuLight.shadow.needsUpdate = true;
   totoCute.visible = true; totoCreepy.visible = false; totoRig.rotation.y = 0;
   const h = totoCute.userData.head; if (h) h.rotation.copy(totoCute.userData.headRot);
   for (const l of world.lights) l.l.intensity = l.base;
@@ -1078,7 +1088,8 @@ function applyWorld(dt, now) {
   totoRig.rotation.x = t.m === 'fall' ? -1.35 : 0;
   totoRig.rotation.z = moved > 0.001 ? Math.sin(now / 520) * 0.05 : 0;
   if (TV.stepAcc > 1.1 && totoCreepy.visible) { TV.stepAcc = 0; step({ x: TV.x, z: TV.z }, true); }
-  totoEyes.intensity = totoCreepy.visible && t.m === 'drag' ? 0.6 + (t.fa || 0) * 2 : 0;
+  totoEyes.intensity = totoRig.visible && totoCreepy.visible && t.m === 'drag' ? 0.6 + (t.fa || 0) * 2 : 0;
+  totoEyes.position.set(TV.x + Math.sin(TV.y) * 0.6, 2.6, TV.z + Math.cos(TV.y) * 0.6);
   // 컷씬 이후 방장이 아닌 사람도 phase 동기화
   // 다른 플레이어
   for (const p of players.values()) {
@@ -1132,7 +1143,7 @@ function loop(now) {
     menuTick(dt, now);
   }
   if (JS.active) { JS.render(renderer, dt, innerWidth / innerHeight); if (!JS.active) { const f = $('fade'); f.style.transition = 'none'; f.style.opacity = '1'; requestAnimationFrame(() => { f.style.transition = 'opacity 1.2s'; f.style.opacity = '0'; }); } }
-  else if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; renderer.render(scene, camera); if (started) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vm.scene, vm.cam); renderer.autoClear = true; } window.__forceRender = false; }
+  else if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; updateLightPool(); renderer.render(scene, camera); if (started) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vm.scene, vm.cam); renderer.autoClear = true; } window.__forceRender = false; }
   if (TEST) setTimeout(() => loop(performance.now()), 60); else requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -1142,4 +1153,10 @@ SR.onText = (text, key) => {
   d.heard = text; d.sign?.draw(); net?.send({ t: 'heard', d: key, x: text.slice(0, 30) });
   if (W && !W.doors[key]?.perm && phraseMatch(text, d.kind === 'sesame' ? '열려라 참깨' : d.phrase, d.kind === 'sesame')) { req('door', { id: key }); tagRecent(d.kind === 'sesame' ? '열려라 참깨' : d.phrase); srStop(); }
 };
+// 처음 보는 재질 때문에 멈추지 않도록 미리 셰이더를 만들어 둠 (메뉴 화면에 있는 동안)
+setTimeout(() => {
+  const was = totoCreepy.visible; totoCreepy.visible = true;
+  try { renderer.compileAsync?.(scene, camera)?.catch(() => {}); renderer.compileAsync?.(vm.scene, vm.cam)?.catch(() => {}); JS.warm(renderer)?.catch(() => {}); } catch {}
+  totoCreepy.visible = was;
+}, 300);
 window.__vt = { JS, flash, renderer, MENU, me, players, get W() { return W; }, world, AU, get H() { return H; } };

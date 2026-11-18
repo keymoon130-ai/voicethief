@@ -51,7 +51,7 @@ export function makeViewmodel(sleeveColor = '#4a5560') {
   const pinch = makePinch(gm, sm); L.add(pinch);
   const card = makeCard(); card.rotation.set(-0.9, 0.25, 0.1); card.position.set(-0.03, 0.02, -0.03); L.add(card);
   const fuse = makeFuse(false); fuse.scale.setScalar(0.55); fuse.rotation.set(0.3, 0, 0.5); fuse.position.set(-0.02, 0.03, -0.02); L.add(fuse);
-  const fuseLight = new THREE.PointLight('#ffc45a', 0, 0.6, 2); fuse.add(fuseLight);
+  const fuseLight = new THREE.PointLight('#ffc45a', 0, 0.6, 2); scene.add(fuseLight);
 
   const S = { yawL: 0, pitchL: 0, lastYaw: null, lastPitch: 0, bob: 0, rUp: 0, lUp: 0, poke: 0, kick: 0, flashOn: false, act: 0 };
   const REST_R = new THREE.Vector3(0.23, -0.21, -0.46), REST_L = new THREE.Vector3(-0.21, -0.2, -0.42);
@@ -85,7 +85,7 @@ export function makeViewmodel(sleeveColor = '#4a5560') {
     L.position.set(REST_L.x - bx * 0.8 + S.yawL * 0.6 + S.act * 0.06 + pk * 0.05, REST_L.y + by - S.pitchL * 0.5 - (1 - S.lUp) * 0.35 - S.act * 0.03 + shake + pk * 0.03, REST_L.z - S.act * 0.1 - pk * 0.16);
     L.rotation.set(S.pitchL * 1.5 + run * 0.1, -0.15 + S.yawL * 2, S.yawL * 1.5 + run * 0.15);
     card.visible = st.hasCard && !st.carrying; fuse.visible = !!st.carrying;
-    fuseLight.intensity = fuse.visible ? 0.5 : 0;
+    fuseLight.intensity = fuse.visible && L.visible ? 0.5 : 0; fuseLight.position.copy(L.position);
     // 렌즈와 손 위 반사광
     const on = st.flashOn && st.hasFlash && !st.boxed;
     fl.userData.lensMat.emissiveIntensity = on ? 2.2 * (0.5 + 0.5 * Math.min(1, st.battery * 3)) : 0;

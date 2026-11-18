@@ -406,7 +406,7 @@ function buildWorldInner(scene) {
         const mouth = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 0.9), new THREE.MeshBasicMaterial({ color: '#ff7a2a' })); mouth.position.set(-0.81, 0.85, 0); mouth.rotation.y = -Math.PI / 2; g.add(mouth);
         for (let i = -3; i <= 3; i++) g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.95, 0.05), steel), -0.84, 0.85, i * 0.24));
         g.add(at(new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.3, 1.2, 12), steel), 0, 3.0, 0.8));
-        const glow = new THREE.PointLight('#ff6a2a', 6, 7, 1.5); glow.position.set(-1.4, 0.9, 0); g.add(glow);
+        const glow = new THREE.PointLight('#ff6a2a', 6, 7, 1.5); glow.position.set(x - 1.4, 0.9, z);
         lights.push({ l: glow, lamp: mouth, base: 6, flicker: 0.3, roomName: '소각로 · 토토 둥지', on: true, fire: true });
         scene.add(g); solid(x, z, 1.6, 3.2);
       }
@@ -526,7 +526,7 @@ function buildWorldInner(scene) {
   // 조명: 몇 군데만 켜져 있고 대부분 어둠. 깜빡이는 형광등, 붉은 비상등
   const L = (x, z, color, intensity, dist, flicker = 0, roomName, y = WALL_H) => {
     z = sz(z);
-    const l = new THREE.PointLight(color, intensity * 3.2, dist * 1.3, 1.5); l.position.set(x, y - 0.35, z); scene.add(l);
+    const l = new THREE.PointLight(color, intensity * 3.2, dist * 1.3, 1.5); l.position.set(x, y - 0.35, z); // 장면에는 넣지 않음: 게임이 가까운 것만 골라 씀
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.06, 0.18), new THREE.MeshBasicMaterial({ color })); lamp.position.set(x, y - 0.05, z); scene.add(lamp);
     lights.push({ l, lamp, base: intensity * 3.2, flicker, roomName, on: true });
   };

@@ -17,6 +17,7 @@ export function makeJumpscare(buildToto) {
   return {
     get active() { return t >= 0 && t < DUR; },
     start() { t = 0; },
+    warm(renderer) { return renderer.compileAsync?.(scene, cam); },
     render(renderer, dt, aspect) {
       t += dt;
       // 0~0.18 어둠 속 멀리 · 0.18~0.34 확 덮침 · 이후 코앞에서 떨림 · 끝에 꺼짐
