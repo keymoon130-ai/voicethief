@@ -115,6 +115,16 @@ export const sz = z => z >= SPLIT ? z + SHIFT : z;
 for (const r of LAYOUT.rooms) { if (r.name === '공포 복도') r.h += SHIFT; else if (r.y >= SPLIT) r.y += SHIFT; }
 for (const d of LAYOUT.doors) d.y = sz(d.y);
 for (const o of LAYOUT.objects) o.y = sz(o.y);
+// 입구 팜플렛 거치대, 길 안내 표지판 추가
+LAYOUT.objects.push(
+  { id: 'pamph', kind: 'pamphlet', x: 81.3, y: 139 },
+  { id: 'sign5', kind: 'sign', x: 85.5, y: 60.4, w: 2.2, text: '↑ 로비 · 공장 중심' },
+  { id: 'sign6', kind: 'sign', x: 80, y: 44.4, w: 3.2, text: '← 하역장·쇼룸     창고·발전실 →' },
+  { id: 'sign8', kind: 'sign', x: 62, y: 44, text: '↑ 쇼룸 · 북쪽' },
+  { id: 'sign9', kind: 'sign', x: 98, y: 44, text: '↑ 창고 · 발전실' },
+  { id: 'sign10', kind: 'sign', x: 98, y: 24, text: '↑ 발전실' },
+  { id: 'sign11', kind: 'sign', x: 80, y: 18.4, w: 3, text: '← 사무실·녹음실     발전실 →' }
+);
 // 방 이름표에 쓰는 이름
 export function displayName(r) {
   if (!r) return '';

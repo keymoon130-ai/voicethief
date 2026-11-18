@@ -252,9 +252,18 @@ function buildWorldInner(scene) {
     } else if (o.kind === 'doll') {
       const shelf = at(new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.9, 0.6), dark), x, 0.45, z); scene.add(shelf); solid(x, z, 0.6, 0.6);
       const d = smallDoll(0.8); d.position.set(x, 0.9, z); d.rotation.y = Math.random() * 6; scene.add(d); P.mesh = d;
+    } else if (o.kind === 'pamphlet') {
+      const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = -Math.PI / 2; scene.add(g);
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.06, 1.1, 0.06), dark), 0, 0.55, 0));
+      g.add(at(new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.04, 0.4), dark), 0, 0.02, 0));
+      const rack = new THREE.Mesh(new THREE.BoxGeometry(0.62, 0.42, 0.12), new THREE.MeshStandardMaterial({ color: '#c94a3c', roughness: 0.6 })); rack.position.set(0, 1.15, 0); rack.rotation.x = -0.35; g.add(rack);
+      const cov = canvasTex(256, 160, (c, w, h) => { c.fillStyle = '#f4ead2'; c.fillRect(0, 0, w, h); c.fillStyle = '#d2553f'; c.fillRect(0, 0, w, 40); c.fillStyle = '#fff'; c.font = '900 26px "Noto Sans KR",sans-serif'; c.textAlign = 'center'; c.fillText('공장 견학 안내', w / 2, 30); c.fillStyle = '#2a2a2a'; c.font = '700 22px "Noto Sans KR",sans-serif'; c.fillText('팜플렛 · 가져가세요', w / 2, 90); c.font = '400 18px "Noto Sans KR",sans-serif'; c.fillText('따라쟁이 토이즈', w / 2, 128); grime(c, w, h, 60); });
+      for (let i = 0; i < 3; i++) { const b = new THREE.Mesh(new THREE.PlaneGeometry(0.17, 0.26), new THREE.MeshStandardMaterial({ map: cov, roughness: 0.8, emissive: '#ffffff', emissiveMap: cov, emissiveIntensity: 0.35 })); b.position.set(-0.19 + i * 0.19, 1.17, 0.07); b.rotation.x = -0.35; g.add(b); }
+      solid(x, z, 0.5, 0.5); P.mesh = g;
     } else if (o.kind === 'sign') {
-      const tex = canvasTex(256, 96, (g) => { g.fillStyle = '#e8dcae'; g.fillRect(0, 0, 256, 96); g.strokeStyle = '#7a1f1f'; g.lineWidth = 6; g.strokeRect(3, 3, 250, 90); g.fillStyle = '#2a2a2a'; g.font = '700 40px "Noto Sans KR",sans-serif'; g.textAlign = 'center'; g.fillText(o.text, 128, 62); grime(g, 256, 96, 40); });
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 0.52), new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide })); m.position.set(x, 2.5, z); scene.add(m); P.mesh = m;
+      const SW = o.w ? Math.round(256 * o.w / 1.4) : 256;
+      const tex = canvasTex(SW, 96, (g) => { g.fillStyle = '#e8dcae'; g.fillRect(0, 0, SW, 96); g.strokeStyle = '#7a1f1f'; g.lineWidth = 6; g.strokeRect(3, 3, SW - 6, 90); g.fillStyle = '#2a2a2a'; let fs = 40; g.font = `700 ${fs}px "Noto Sans KR",sans-serif`; while (g.measureText(o.text).width > SW - 24 && fs > 18) { fs -= 2; g.font = `700 ${fs}px "Noto Sans KR",sans-serif`; } g.textAlign = 'center'; g.fillText(o.text, SW / 2, 48 + fs * 0.36); grime(g, SW, 96, 40); });
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(o.w || 1.4, 0.52), new THREE.MeshLambertMaterial({ map: tex, side: THREE.DoubleSide })); m.position.set(x, 2.5, z); m.rotation.y = o.rot || 0; scene.add(m); P.mesh = m;
     }
     props.set(o.id, P);
   }
@@ -320,7 +329,7 @@ function buildWorldInner(scene) {
         }
       }
       // 배관: 공장·복도 벽을 따라 천장 아래로
-      if (r.type !== 'intro' || r.name === '토토 광장') {
+      if ((r.type !== 'intro' || r.name === '토토 광장') && r.name !== '공포 복도' && r.name !== 'T자 교차 복도') {
         const runs = r.type === 'corridor' ? 1 + (Math.random() < 0.5 ? 1 : 0) : 2;
         const walls = [{ o: 'h', z: r.y + 0.42, a: r.x, b: r.x + r.w }, { o: 'h', z: r.y + r.h - 0.42, a: r.x, b: r.x + r.w }, { o: 'v', x: r.x + 0.42, a: r.y, b: r.y + r.h }, { o: 'v', x: r.x + r.w - 0.42, a: r.y, b: r.y + r.h }]
           .filter(w => (w.b - w.a) > 5).sort(() => Math.random() - 0.5).slice(0, runs);
@@ -510,6 +519,7 @@ function buildWorldInner(scene) {
   }
   const roomAtP = (px, pz) => rooms.find(r => px > r.x && px < r.x + r.w && pz > r.y && pz < r.y + r.h);
   for (const d of LAYOUT.doors) {
+    if (d.kind === 'open') continue; // 컷씬에서 토토를 가리지 않게
     const pw = Math.min(2.6, Math.max(1.8, d.len + 0.4)), ph = pw * 96 / 512;
     for (const sgn of [-1, 1]) {
       const here = d.o === 'h' ? roomAtP(d.x, d.y + sgn * 0.8) : roomAtP(d.x + sgn * 0.8, d.y);

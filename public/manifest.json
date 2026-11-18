@@ -1,0 +1,10 @@
+{
+  "name": "Voice Thief",
+  "short_name": "Voice Thief",
+  "start_url": "/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#030304",
+  "theme_color": "#030304",
+  "icons": [{ "src": "/icon.png", "sizes": "512x512", "type": "image/png" }]
+}

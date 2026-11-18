@@ -2,8 +2,14 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Voice Thief</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#030304">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&display=swap" rel="stylesheet">
 <style>
@@ -23,7 +29,7 @@ canvas#gl{display:block;position:fixed;inset:0}
 #rec i{width:10px;height:10px;border-radius:50%;background:#ff3b30;display:inline-block;animation:blink 1s steps(2) infinite}
 @keyframes blink{50%{opacity:0}}
 #goal{left:18px;top:14px;font-size:16px;font-weight:700;text-shadow:0 1px 3px #000}
-#inv{left:18px;top:42px;font-size:12px;color:var(--muted);line-height:1.6;text-shadow:0 1px 2px #000}
+#inv{left:18px;top:62px;font-size:12px;color:var(--muted);line-height:1.6;text-shadow:0 1px 2px #000}
 #hint{left:50%;bottom:22px;transform:translateX(-50%);max-width:min(760px,92vw);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;font-size:14.5px;line-height:1.75;text-align:center;display:none}
 #hint b{color:var(--accent);font-weight:700}
 #prompt{left:50%;top:58%;transform:translateX(-50%);font-size:15px;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:6px 12px;display:none;white-space:nowrap}
@@ -119,6 +125,10 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
 .hud.fade{transition:opacity .5s}
 .hud.off{opacity:0!important}
 #goal.dim{opacity:.55}
+#goal small{display:block;font-size:12px;font-weight:500;color:#cfc8ba;margin-top:2px}
+#pamph{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:none}
+#pamph canvas{width:min(98vw,calc(97vh * 1.5556));height:auto;box-shadow:0 18px 60px rgba(0,0,0,.7);transform:rotate(-.6deg);border-radius:4px}
+@media (pointer:coarse){#goal{pointer-events:auto}}
 #rec{opacity:.6}
 @media (max-height:520px){
   .mm-since{display:none}
@@ -169,6 +179,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
 <div class="hud" id="toast" role="status"></div>
 <div id="letter"></div>
 <div id="boxed"><b>상자에 갇혔어요</b><span>소리치면 근처 동료에게 먹먹하게 들려요 · 동료가 E를 꾹 눌러 꺼내 줄 수 있어요</span></div>
+<div id="pamph" class="hide"><canvas id="pamphC"></canvas></div>
 <div id="fade"></div>
 <div id="scareFx"></div>
 <div id="opening"><div class="t1" id="op1"></div><div class="t2" id="op2"></div><div class="t3" id="op3"></div></div>
@@ -201,6 +212,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
   <section class="mm-panel mm-room hide" id="stepRoom">
     <div class="row"><div><div class="mm-lab">방 코드</div><div class="code" id="codeShow">----</div></div><button id="btnCopy" style="margin-left:auto">코드 복사</button></div>
     <div class="plist" id="plist"></div>
+    <p class="mm-small hide" id="iosTip" style="color:#f2b134">📱 아이폰은 사파리 <b>공유 → 홈 화면에 추가</b>로 설치해서 열면 전체화면으로 할 수 있어요.</p>
     <p class="mm-small">2~6명 · 4명 추천 · 🎧 이어폰을 끼면 친구 목소리가 오는 방향이 들려요</p>
     <div class="sec">
       <div class="mm-lab">마이크</div>
@@ -272,6 +284,8 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
   <div class="tbtn" id="tUse" style="right:100px;bottom:44px">상호작용</div>
   <div class="tbtn" id="tRun" style="right:24px;bottom:44px">달리기</div>
   <div class="tbtn" id="tHelp" style="right:24px;top:48px;width:44px;height:44px">?</div>
+  <div class="tbtn" id="tMap" style="right:76px;top:48px;width:44px;height:44px">📄</div>
+  <div class="tbtn hide" id="tFull" style="right:128px;top:48px;width:44px;height:44px">⛶</div>
 </div>
 
 <script type="importmap">{"imports":{"three":"https://unpkg.com/three@0.169.0/build/three.module.js"}}</script>
