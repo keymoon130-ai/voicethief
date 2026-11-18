@@ -33,8 +33,8 @@ export const LAYOUT = {
   doors: [
     {id:"d2noq122",kind:"shutter",x:79.5,y:135,o:"h",len:4},
     {id:"d2noq123",kind:"normal",x:79.5,y:113,o:"h",len:2},
-    {id:"d2noq124",kind:"normal",x:79.5,y:87,o:"h",len:2,lockUntil:"hunt"},
-    {id:"dfix001",kind:"normal",x:79.5,y:65,o:"h",len:4},
+    {id:"d2noq124",kind:"normal",x:79.5,y:87,o:"h",len:2,lockUntil:"hunt",seal:true},
+    {id:"dfix001",kind:"open",x:79.5,y:65,o:"h",len:5},
     {id:"d2noq131",kind:"normal",x:66,y:98.5,o:"v",len:2},
     {id:"dfix002",kind:"normal",x:54,y:99,o:"v",len:2},
     {id:"d2noq129",kind:"voice",x:42,y:99.5,o:"v",len:2,phrase:"야 이쪽으로 와봐"},
@@ -108,6 +108,19 @@ export const LAYOUT = {
     {id:"sign4",kind:"sign",x:97,y:40,text:"↓ 소각로"}
   ]
 };
+
+// 공포 복도를 길게: 광장·교육실·입구를 남쪽으로 SHIFT 만큼 옮김
+export const SHIFT = 12, SPLIT = 87;
+export const sz = z => z >= SPLIT ? z + SHIFT : z;
+for (const r of LAYOUT.rooms) { if (r.name === '공포 복도') r.h += SHIFT; else if (r.y >= SPLIT) r.y += SHIFT; }
+for (const d of LAYOUT.doors) d.y = sz(d.y);
+for (const o of LAYOUT.objects) o.y = sz(o.y);
+// 방 이름표에 쓰는 이름
+export function displayName(r) {
+  if (!r) return '';
+  const m = r.name.match(/^교육실 (\d)/); if (m) return '신입사원 교육실 ' + m[1];
+  return { '입구 통로': '정문', '공포 복도': '생산동 출입 통로', '소각로 · 토토 둥지': '소각로', 'T자 교차 복도': '생산동 복도' }[r.name] || r.name;
+}
 
 export const TUTORIAL_HINTS = {
   "토토 광장": "광장 반대편 <b>「신입사원 교육실」</b> 문으로 가세요",

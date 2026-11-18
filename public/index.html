@@ -110,7 +110,10 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
   .mm-story{display:none}
   .mm-room,#lobby.room .mm-room{top:auto;bottom:10px;max-height:62vh}
 }
-.in-menu .hud{display:none!important}
+#scareFx{position:fixed;inset:0;pointer-events:none;z-index:7;opacity:0;background:radial-gradient(ellipse at center,rgba(255,255,255,0) 30%,rgba(160,0,0,.85) 100%)}
+.scare #scareFx{animation:sfx 1.35s linear}
+@keyframes sfx{0%,12%{opacity:0;background-color:transparent}14%{opacity:1;background-color:rgba(255,240,230,.85)}20%{opacity:1;background-color:transparent}60%{opacity:.8}100%{opacity:0}}
+.in-menu .hud,.scare .hud,.scare #toast,.scare #touch{display:none!important}
 .hud.fade{transition:opacity .5s}
 .hud.off{opacity:0!important}
 #goal.dim{opacity:.55}
@@ -165,6 +168,7 @@ label.chk{display:flex;gap:8px;align-items:center;font-size:14px;color:var(--ink
 <div id="letter"></div>
 <div id="boxed"><b>상자에 갇혔어요</b><span>소리치면 근처 동료에게 먹먹하게 들려요 · 동료가 E를 꾹 눌러 꺼내 줄 수 있어요</span></div>
 <div id="fade"></div>
+<div id="scareFx"></div>
 <div id="opening"><div class="t1" id="op1"></div><div class="t2" id="op2"></div><div class="t3" id="op3"></div></div>
 <div id="rot">화면을 가로로 돌려주세요</div>
 

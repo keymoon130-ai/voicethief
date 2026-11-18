@@ -1,10 +1,11 @@
 // Voice Thief — 게임 본체
 // 판정은 방장(호스트) 브라우저가 하고(W), 나머지는 W를 받아서 그려요.
 import * as THREE from 'three';
-import { buildWorld, WALL_H } from './world.js';
-import { LAYOUT, TUTORIAL_HINTS } from './layout.js';
+import { buildWorld, WALL_H, PLAZA_H, STAGE_H } from './world.js';
+import { LAYOUT, TUTORIAL_HINTS, sz } from './layout.js';
+import { makeJumpscare } from './jumpscare.js';
 import { buildToto } from './toto.js';
-import { AU, ensureCtx, initMic, encodeClip, decodeClip, playBuf, setListener, makeRemoteVoice, setPos, calibrate, shoutNeed, SR, srStart, srStop, phraseMatch, startAmbience, creak, musicBox, step, rumble, siren, blip, startMenuMusic, stopMenuMusic, zap } from './audio.js';
+import { AU, ensureCtx, initMic, encodeClip, decodeClip, playBuf, setListener, makeRemoteVoice, setPos, calibrate, shoutNeed, SR, srStart, srStop, phraseMatch, startAmbience, creak, musicBox, step, rumble, siren, blip, startMenuMusic, stopMenuMusic, zap, scream, slam } from './audio.js';
 import { Net } from './net.js';
 import { makeViewmodel } from './viewmodel.js';
 import { makeFlashlight, makeFuse, rb } from './props.js';
@@ -13,9 +14,11 @@ const $ = id => document.getElementById(id);
 const COLORS = ['#f2b134', '#5fb3e6', '#e66f9a', '#7fd17a', '#b892f0', '#f08a4b'];
 const isTouch = matchMedia('(pointer:coarse)').matches;
 const NEST = { x: 111, z: 54 };
-const STATUE = { x: 80, z: 100 };
-const PODIUM = { x: 69, z: 119 };
 const OBJ = Object.fromEntries(LAYOUT.objects.map(o => [o.id, o]));
+const STATUE = { x: OBJ.statue.x, z: OBJ.statue.y };
+const PODIUM = { x: OBJ.podium.x, z: OBJ.podium.y };
+const START = { x: OBJ.start.x, z: OBJ.start.y };
+const SEAL_DOOR = LAYOUT.doors.find(d => d.seal);
 const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 
 /* ===== 렌더러 ===== */
@@ -53,7 +56,7 @@ const totoEyes = new THREE.PointLight('#8fd9bd', 0, 4, 2); totoEyes.position.set
 const TV = { x: STATUE.x, z: STATUE.z, y: 0, stepAcc: 0, lastX: STATUE.x, lastZ: STATUE.z };
 
 /* ===== 상태 ===== */
-const me = { id: null, name: '', x: 79.5, z: 130, yaw: 0, pitch: 0, flash: false, battery: 0.6, stamina: 1, hold: null, room: null, padCool: 0, doorHold: 0 };
+const me = { id: null, name: '', x: START.x, z: START.z, yaw: 0, pitch: 0, flash: false, battery: 0.6, stamina: 1, hold: null, room: null, padCool: 0, doorHold: 0 };
 const players = new Map();
 const clips = new Map();
 let W = null, net = null, started = false, ended = false, startAt = 0;
@@ -182,7 +185,7 @@ function renderPlist() {
 }
 function addPlayer(id, name, rdy) {
   if (players.has(id)) return players.get(id);
-  const p = { id, name, ready: !!rdy, x: 79.5, z: 130, yaw: 0, pitch: 0, fl: 0, sh: 0, sp: 0, lv: 0, hold: null, tx: 79.5, tz: 130, avatar: null, voice: null, color: '#ccc' };
+  const p = { id, name, ready: !!rdy, x: START.x, z: START.z, yaw: 0, pitch: 0, fl: 0, sh: 0, sp: 0, lv: 0, hold: null, tx: START.x, tz: START.z, avatar: null, voice: null, color: '#ccc' };
   players.set(id, p); return p;
 }
 function onPeerGone(id) {
@@ -211,7 +214,7 @@ document.body.classList.add('in-menu');
 const MENU = { on: true, mx: 0, my: 0, hx: 0, hy: 0, next: performance.now() + 5000, fl: null, creepyUntil: 0, sound: false };
 const menuLight = new THREE.SpotLight('#ffe2b8', 60, 18, 0.5, 0.6, 1.3);
 menuLight.castShadow = true; menuLight.shadow.mapSize.set(isTouch ? 512 : 1024, isTouch ? 512 : 1024); menuLight.shadow.bias = -0.0005; menuLight.shadow.camera.near = 0.3; menuLight.shadow.camera.far = 14;
-menuLight.position.set(80.6, WALL_H - 0.1, 103.2); menuLight.target.position.set(80, 1.6, 100); scene.add(menuLight, menuLight.target);
+menuLight.position.set(STATUE.x + 0.6, PLAZA_H - 0.5, STATUE.z + 4.5); menuLight.target.position.set(STATUE.x, 2.2, STATUE.z); scene.add(menuLight, menuLight.target);
 addEventListener('pointermove', e => { MENU.mx = e.clientX / innerWidth * 2 - 1; MENU.my = e.clientY / innerHeight * 2 - 1; });
 function menuSound() { if (MENU.sound || !MENU.on) return; MENU.sound = true; ensureCtx(); startMenuMusic(); $('mmSound').classList.add('hide'); }
 addEventListener('pointerdown', menuSound); addEventListener('keydown', menuSound);
@@ -223,8 +226,8 @@ function menuTick(dt, now) {
   // 카메라: 왼쪽 메뉴를 피해 토토를 화면 오른쪽에. 숨 쉬듯 아주 조금 흔들림
   const narrow = innerWidth < innerHeight * 1.1;
   const bx = narrow ? 80 : 77.6, br = Math.sin(now / 2300) * 0.04;
-  camera.position.set(80 + (narrow ? 0 : -1.4) + Math.sin(now / 7000) * 0.25 + MENU.mx * 0.12, 1.45 + br, 106.6 + (narrow ? 2 : 0));
-  camera.lookAt(bx + MENU.mx * 0.15, 2.05 + (narrow ? 0.2 : 0) - MENU.my * 0.08, 100);
+  camera.position.set(STATUE.x + (narrow ? 0 : -1.6) + Math.sin(now / 7000) * 0.25 + MENU.mx * 0.12, 1.5 + br, STATUE.z + 7.4 + (narrow ? 2.4 : 0));
+  camera.lookAt(bx - 80 + STATUE.x + MENU.mx * 0.15, 2.75 + (narrow ? 0.3 : 0) - MENU.my * 0.08, STATUE.z);
   // 고개가 커서를 천천히 따라옴
   const cute = totoCute.userData.head, base = totoCute.userData.headRot;
   MENU.hx += ((MENU.mx * 0.45) - MENU.hx) * Math.min(1, dt * 0.9); MENU.hy += ((MENU.my * 0.18) - MENU.hy) * Math.min(1, dt * 0.9);
@@ -250,6 +253,7 @@ function menuTick(dt, now) {
   totoCute.visible = !creepy; totoCreepy.visible = creepy;
   if (creepy) { totoRig.rotation.y = MENU.hx * 0.6; const ch = totoCreepy.userData.head; if (ch) ch.rotation.y = totoCreepy.userData.headRot.y + MENU.hx * 1.2; if (!MENU.wasCreepy && MENU.sound) { blip(70, 0.5, 0.25); $('lobby').querySelector('.mm-title').classList.add('glitch'); setTimeout(() => $('lobby').querySelector('.mm-title').classList.remove('glitch'), 400); } }
   else totoRig.rotation.y = 0;
+  totoRig.position.set(STATUE.x, STAGE_H, STATUE.z);
   MENU.wasCreepy = creepy;
 }
 function menuEnd() {
@@ -326,7 +330,7 @@ function resumeGame(m) {
   setOverlay('lobby', false); menuEnd();
   if (isTouch) { $('touch').style.display = 'block'; $('rot').classList.add('live'); }
   const i = Math.max(0, W.ids.indexOf(me.id)); me.color = COLORS[i]; me.idx = i; vm.setSleeve(COLORS[i]);
-  if (m.pos) { me.x = m.pos.x; me.z = m.pos.z; } else if (W.phase === 'intro') { me.x = 79.5; me.z = 130; } else { me.x = 79; me.z = 97; }
+  if (m.pos) { me.x = m.pos.x; me.z = m.pos.z; } else if (W.phase === 'intro') { me.x = START.x; me.z = START.z; } else if (W.flags?.sealed) { me.x = 79.5; me.z = 80; } else { me.x = STATUE.x; me.z = STATUE.z + 6; }
   [me.x, me.z] = world.resolve(me.x, me.z);
   me.equip = W.equip[me.id] || { f: 0, c: 0 };
   world.props.get('note').draw(W.code);
@@ -346,8 +350,8 @@ function beginGame(m) {
     const p = players.get(id) || addPlayer(id, m.names[id]); p.name = m.names[id]; p.color = COLORS[i]; p.idx = i; makeAvatar(p);
   });
   const myI = ids.indexOf(me.id);
-  if (m.skip) { me.x = 78 + (myI % 3) * 1.5; me.z = 97 + Math.floor(myI / 3) * 1.5; me.yaw = 0; }
-  else { me.x = 78.5 + (myI % 2) * 2; me.z = 131 - Math.floor(myI / 2) * 1.6; me.yaw = 0; }
+  if (m.skip) { me.x = 78 + (myI % 3) * 1.5; me.z = STATUE.z + 6.5 + Math.floor(myI / 3) * 1.5; me.yaw = 0; }
+  else { me.x = START.x - 1 + (myI % 2) * 2; me.z = START.z + 1 - Math.floor(myI / 2) * 1.6; me.yaw = 0; }
   me.equip = m.equip[me.id] || { f: 0, c: 0 };
   me.battery = 0.6;
   world.props.get('note').draw(m.code);
@@ -550,10 +554,15 @@ function endGame(reason) {
 function hostTick(dt) {
   if (!W || W.phase === 'end') return;
   const all = allPlayers(), act = activeOf(all);
-  // 진행: 컷씬 트리거
-  if (W.phase === 'hunt' && act.some(p => p.x > 76 && p.x < 83 && p.z < 75 && p.z > 64)) {
-    W.phase = 'cutscene'; W.toto = { x: 57, z: 62.5, y: Math.PI / 2, m: 'cut', v: 'creepy', d: null }; W.cutT = 0;
-    const c = pickClip(null); ev('cut', { o: c?.[0], c: c?.[1] });
+  // 진행: 모두 긴 복도에 들어오면 뒤에서 셔터가 쾅 닫히고, 잠시 뒤 저 멀리 교차점에 토토가 지나감
+  const inCorr = p => p.x > 76.5 && p.x < 82.5 && p.z < SEAL_DOOR.y - 1.6 && p.z > 65;
+  if (W.phase === 'hunt' && !W.flags.sealed && act.length && act.every(inCorr)) { W.flags.sealed = true; H.sealT = 0; ev('seal'); }
+  if (W.phase === 'hunt' && W.flags.sealed) {
+    H.sealT = (H.sealT || 0) + dt;
+    if (H.sealT > 3.2) {
+      W.phase = 'cutscene'; W.toto = { x: 64, z: 62.5, y: Math.PI / 2, m: 'cut', v: 'creepy', d: null }; W.cutT = 0;
+      const c = pickClip(null); ev('cut', { o: c?.[0], c: c?.[1] });
+    }
   }
   // 수료식 짜깁기 축사
   if (!W.flags.speech && !W.tut.done && all.some(p => world.roomAt(p.x, p.z)?.name === '수료식장')) {
@@ -569,6 +578,8 @@ function hostTick(dt) {
   for (const d of world.doors.values()) {
     const s = W.doors[d.id];
     const near = r => act.some(p => Math.hypot(p.x - d.x, p.z - d.y) < r) || (totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6);
+    if (d.kind === 'open') continue;
+    if (d.seal && W.flags.sealed) { s.o = 0; continue; }
     if (d.kind === 'normal') s.o = (d.lockUntil === 'hunt' && !W.tut.done) ? 0 : (near(2.7) ? 1 : 0);
     else if (d.kind === 'locked') s.o = (act.some(p => W.equip[p.id]?.c && Math.hypot(p.x - d.x, p.z - d.y) < 2.8) || (totoActive && Math.hypot(W.toto.x - d.x, W.toto.z - d.y) < 2.6)) ? 1 : 0;
     else if (d.kind === 'lever') s.o = W.tut.lev ? 1 : 0;
@@ -670,8 +681,11 @@ function pickClip(listenerId, exclude = new Set()) {
 function totoTick(dt, all, act) {
   const t = W.toto, tier = W.phase === 'escape' ? 4 : W.inserted;
   if (t.m === 'cut') {
-    W.cutT = (W.cutT || 0) + dt; t.x = 57 + (103 - 57) * Math.min(1, W.cutT / 8); t.y = Math.PI / 2;
-    if (W.cutT >= 8.5) { t.m = 'roam'; W.phase = 'main'; t.x = 103; H.grace = 15; H.path = null; }
+    W.cutT = (W.cutT || 0) + dt; const ct = W.cutT;
+    if (ct < 3.6) { t.x = 64 + (79.5 - 64) * (ct / 3.6); t.y = Math.PI / 2; }
+    else if (ct < 7.2) { t.x = 79.5; t.y = ct < 4.4 ? Math.PI / 2 * (1 - (ct - 3.6) / 0.8) : 0; }
+    else { t.x = 79.5 + (103 - 79.5) * Math.min(1, (ct - 7.2) / 4); t.y = ct < 7.8 ? Math.PI / 2 * ((ct - 7.2) / 0.6) : Math.PI / 2; }
+    if (W.cutT >= 11.2) { t.m = 'roam'; W.phase = 'main'; t.x = 103; H.grace = 15; H.path = null; }
     return;
   }
   if (!['roam', 'hunt', 'stalk', 'drag', 'fall'].includes(t.m)) return;
@@ -778,12 +792,19 @@ function onEvent(m) {
       break;
     }
     case 'cut': {
-      cut = { t: 0, dur: 8.5, o: m.o, c: m.c, said: false }; $('letter').style.display = 'block';
+      cut = { t: 0, dur: 11.2, o: m.o, c: m.c, said: false }; $('letter').style.display = 'block';
       document.exitPointerLock?.();
       break;
     }
+    case 'seal': {
+      const sd = world.doors.get(SEAL_DOOR.id); slam({ x: sd.x, z: sd.y }); shakeT = 0.6;
+      toast('뒤에서 셔터가 쾅 닫혔어요…', 3200);
+      break;
+    }
     case 'caught': {
-      blip(160, 0.6, 0.3); step({ x: me.x, z: me.z }, true);
+      if (m.id === me.id && !m.pr) { JS.start(); scream(); document.body.classList.add('scare'); setTimeout(() => document.body.classList.remove('scare'), 1400); }
+      else blip(160, 0.6, 0.3);
+      step({ x: me.x, z: me.z }, true);
       if (m.id === me.id) { toast(m.pr ? '포장됐어요! 동료가 꺼내 줄 때까지 기다리세요' : '토토한테 잡혔어요! 소리쳐서 동료를 부르세요', 4000); me.flash = false; }
       else toast((W?.names?.[m.id] || '누군가') + (m.pr ? ' 님이 포장 체험 중이에요' : ' 님이 잡혔어요!'), 3000);
       break;
@@ -826,6 +847,8 @@ const HUD = { goal: '', goalT: 0, hint: null, hintT: 0, inv: '', invT: 0, micT: 
 for (const id of ['inv', 'mic', 'stam', 'goal']) $(id).classList.add('fade');
 let anyTab = false;
 addEventListener('keydown', e => { if (e.code === 'KeyQ') anyTab = true; }); addEventListener('keyup', e => { if (e.code === 'KeyQ') anyTab = false; });
+let shakeT = 0;
+const JS = makeJumpscare(buildToto);
 let srShoutT = 0, recentRoom = null, stepAcc = 0, creakT = 15, flick = 0;
 function localTick(dt, now) {
   const boxed = W?.boxed?.[me.id];
@@ -856,11 +879,14 @@ function localTick(dt, now) {
     const want = Math.atan2(-(80 - me.x), -(62.5 - me.z));
     let dy = want - me.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
     me.yaw += dy * Math.min(1, dt * 3); me.pitch += (0.08 - me.pitch) * Math.min(1, dt * 3);
-    if (!cut.said && cut.t > 3.5) { cut.said = true; const c = getClip(cut.o, cut.c); if (c) playBuf(c.buf, { x: TV.x, y: 2.6, z: TV.z }, { gain: 1.5 }); }
+    if (!cut.said && cut.t > 4.6) { cut.said = true; const c = getClip(cut.o, cut.c); if (c) playBuf(c.buf, { x: TV.x, y: 2.6, z: TV.z }, { gain: 1.5 }); }
     if (cut.t >= cut.dur) { cut = null; $('letter').style.display = 'none'; toast('…토토가 공장 안을 돌아다니고 있어요', 3500); }
   }
   camera.position.set(me.x, boxed ? 0.75 : 1.65 + (L > 0 ? Math.sin(now / (running ? 90 : 140)) * 0.03 : 0), me.z);
   camera.rotation.set(me.pitch, me.yaw, 0);
+  if (shakeT > 0) { shakeT -= dt; const a = shakeT * 0.06; camera.rotation.x += (Math.random() - 0.5) * a; camera.rotation.y += (Math.random() - 0.5) * a; camera.position.y += (Math.random() - 0.5) * a; }
+  // 컷씬 동안 안개를 걷어 멀리 교차점이 보이게, 교차점 조명은 밝게 고정
+  const fogT = cut ? 0.02 : 0.045; scene.fog.density += (fogT - scene.fog.density) * Math.min(1, dt * 1.5);
   $('boxed').style.display = boxed ? 'flex' : 'none';
 
   // 손전등
@@ -1004,9 +1030,9 @@ function applyWorld(dt, now) {
   if (!W) return;
   // 문
   for (const d of world.doors.values()) {
-    const s = W.doors[d.id]; if (!s) continue;
+    const s = W.doors[d.id]; if (!s || d.kind === 'open') continue;
     const target = (d.kind === 'shout' || d.kind === 'exit') ? s.o : (s.o ? 1 : 0);
-    const sp = (d.kind === 'shout' || d.kind === 'exit') ? 4 : 1.6;
+    const sp = (d.kind === 'shout' || d.kind === 'exit') ? 4 : d.seal && W.flags?.sealed ? 5 : 1.6;
     const before = d.amt;
     d.amt += Math.max(-sp * dt, Math.min(sp * dt, target - d.amt));
     d.mesh.position.y = WALL_H / 2 + d.amt * (WALL_H - 0.2);
@@ -1047,7 +1073,7 @@ function applyWorld(dt, now) {
   let dy = t.y - TV.y; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2; TV.y += dy * k;
   const moved = Math.hypot(TV.x - TV.lastX, TV.z - TV.lastZ); TV.lastX = TV.x; TV.lastZ = TV.z;
   TV.stepAcc += moved;
-  totoRig.position.set(TV.x, t.m === 'fall' ? 0.2 : Math.abs(Math.sin(now / 260)) * (moved > 0.001 ? 0.06 : 0), TV.z);
+  totoRig.position.set(TV.x, t.m === 'statue' ? STAGE_H : t.m === 'fall' ? 0.2 : Math.abs(Math.sin(now / 260)) * (moved > 0.001 ? 0.06 : 0), TV.z);
   totoRig.rotation.y = TV.y;
   totoRig.rotation.x = t.m === 'fall' ? -1.35 : 0;
   totoRig.rotation.z = moved > 0.001 ? Math.sin(now / 520) * 0.05 : 0;
@@ -1083,6 +1109,7 @@ function applyWorld(dt, now) {
   // 조명 깜빡임
   flick += dt;
   for (const l of world.lights) {
+    if (l.roomName === '교차점' && cut) { l.l.intensity = l.base * 1.8; continue; }
     if (l.fire) { l.l.intensity = l.base * (0.75 + Math.sin(now / 90) * 0.12 + Math.random() * 0.13); continue; }
     if (Math.random() < l.flicker * dt * 30) l.offT = 0.05 + Math.random() * 0.25;
     if (l.offT > 0) { l.offT -= dt; l.l.intensity = l.base * 0.08; l.lamp.material.color.setScalar(0.15); }
@@ -1104,7 +1131,8 @@ function loop(now) {
   } else {
     menuTick(dt, now);
   }
-  if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; renderer.render(scene, camera); if (started) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vm.scene, vm.cam); renderer.autoClear = true; } window.__forceRender = false; }
+  if (JS.active) { JS.render(renderer, dt, innerWidth / innerHeight); if (!JS.active) { const f = $('fade'); f.style.transition = 'none'; f.style.opacity = '1'; requestAnimationFrame(() => { f.style.transition = 'opacity 1.2s'; f.style.opacity = '0'; }); } }
+  else if (!TEST || now - lastRender > 400 || window.__forceRender) { lastRender = now; renderer.render(scene, camera); if (started) { renderer.autoClear = false; renderer.clearDepth(); renderer.render(vm.scene, vm.cam); renderer.autoClear = true; } window.__forceRender = false; }
   if (TEST) setTimeout(() => loop(performance.now()), 60); else requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
@@ -1114,4 +1142,4 @@ SR.onText = (text, key) => {
   d.heard = text; d.sign?.draw(); net?.send({ t: 'heard', d: key, x: text.slice(0, 30) });
   if (W && !W.doors[key]?.perm && phraseMatch(text, d.kind === 'sesame' ? '열려라 참깨' : d.phrase, d.kind === 'sesame')) { req('door', { id: key }); tagRecent(d.kind === 'sesame' ? '열려라 참깨' : d.phrase); srStop(); }
 };
-window.__vt = { flash, renderer, MENU, me, players, get W() { return W; }, world, AU, get H() { return H; } };
+window.__vt = { JS, flash, renderer, MENU, me, players, get W() { return W; }, world, AU, get H() { return H; } };

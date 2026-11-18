@@ -281,3 +281,28 @@ export function zap(vol = 0.25) {
   for (let k = 0; k < 5; k++) { g.gain.setValueAtTime(vol * Math.random(), t + k * 0.04); g.gain.setValueAtTime(0, t + k * 0.04 + 0.02); }
   n.connect(hp); hp.connect(g); g.connect(AU.sfx); n.start(t); n.stop(t + 0.3);
 }
+
+/* ===== 점프스케어 비명: 찢어지는 고음 + 쾅 ===== */
+export function scream() {
+  if (!AU.ctx) return; const c = AU.ctx, t = c.currentTime;
+  const shaper = c.createWaveShaper(); { const n = 1024, cv = new Float32Array(n); for (let i = 0; i < n; i++) { const x = i / n * 2 - 1; cv[i] = Math.tanh(x * 4); } shaper.curve = cv; }
+  const out = c.createGain(); out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(0.55, t + 0.2); out.gain.setValueAtTime(0.55, t + 0.95); out.gain.exponentialRampToValueAtTime(0.001, t + 1.35);
+  shaper.connect(out); out.connect(AU.sfx);
+  for (const [f, det] of [[420, 0], [433, 7], [610, -9], [890, 13]]) {
+    const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.setValueAtTime(f * 0.6, t + 0.15); o.frequency.exponentialRampToValueAtTime(f, t + 0.32); o.frequency.linearRampToValueAtTime(f * 0.92, t + 1.3); o.detune.value = det;
+    const lfo = c.createOscillator(); lfo.frequency.value = 23 + Math.random() * 9; const lg = c.createGain(); lg.gain.value = f * 0.04; lfo.connect(lg); lg.connect(o.frequency);
+    const g = c.createGain(); g.gain.value = 0.22; o.connect(g); g.connect(shaper); o.start(t + 0.15); o.stop(t + 1.4); lfo.start(t + 0.15); lfo.stop(t + 1.4);
+  }
+  const n = c.createBufferSource(); n.buffer = noise(); const bp = c.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 2400; bp.Q.value = 0.8; const ng = c.createGain(); ng.gain.value = 0.35; n.connect(bp); bp.connect(ng); ng.connect(shaper); n.start(t + 0.15); n.stop(t + 1.35);
+  // 쾅
+  const b = c.createOscillator(); b.type = 'sine'; b.frequency.setValueAtTime(120, t + 0.17); b.frequency.exponentialRampToValueAtTime(35, t + 0.7);
+  const bg = c.createGain(); bg.gain.setValueAtTime(0, t + 0.17); bg.gain.linearRampToValueAtTime(0.9, t + 0.19); bg.gain.exponentialRampToValueAtTime(0.001, t + 0.9); b.connect(bg); bg.connect(AU.sfx); b.start(t + 0.17); b.stop(t + 1);
+}
+// 셔터 쾅 닫힘
+export function slam(pos) {
+  if (!AU.ctx) return; const c = AU.ctx, t = c.currentTime;
+  const n = c.createBufferSource(); n.buffer = noise(); const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 900;
+  const g = c.createGain(); g.gain.setValueAtTime(0, t); for (let i = 0; i < 6; i++) { g.gain.setValueAtTime(0.5 - i * 0.07, t + i * 0.05); g.gain.setValueAtTime(0.05, t + i * 0.05 + 0.03); } g.gain.setValueAtTime(0.9, t + 0.38); g.gain.exponentialRampToValueAtTime(0.001, t + 1.6);
+  n.connect(lp); lp.connect(g); g.connect(AU.sfx); n.start(t); n.stop(t + 1.7);
+  const b = c.createOscillator(); b.frequency.setValueAtTime(70, t + 0.38); b.frequency.exponentialRampToValueAtTime(30, t + 1.2); const bg = c.createGain(); bg.gain.setValueAtTime(0, t + 0.38); bg.gain.linearRampToValueAtTime(0.8, t + 0.4); bg.gain.exponentialRampToValueAtTime(0.001, t + 1.3); b.connect(bg); bg.connect(AU.sfx); b.start(t + 0.38); b.stop(t + 1.4);
+}
